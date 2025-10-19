@@ -1,0 +1,547 @@
+{
+  "info": {
+    "name": "RTO WhatsApp Reminder System API",
+    "description": "Complete API collection for RTO WhatsApp Reminder System",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "authToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "agentId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "customerId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "reminderId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["health"]
+        }
+      }
+    },
+    {
+      "name": "API Test Endpoints",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/test",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "test"]
+        }
+      }
+    },
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Register Agent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Shuraim Tech\",\n  \"email\": \"shuraim@example.com\",\n  \"mobile\": \"+919876543210\",\n  \"password\": \"password123\",\n  \"company_name\": \"Shuraim RTO Services\",\n  \"role\": \"agent_admin\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Login Agent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"shuraim@example.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "exec": [
+                    "if (pm.response.code === 200) {",
+                    "    const response = pm.response.json();",
+                    "    pm.collectionVariables.set('authToken', response.token);",
+                    "    pm.collectionVariables.set('agentId', response.data.agent.id);",
+                    "    console.log('Token saved:', response.token);",
+                    "}"
+                  ],
+                  "type": "text/javascript"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "Get Current Agent",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "me"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Customers",
+      "item": [
+        {
+          "name": "Create Customer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ravi Kumar\",\n  \"mobile\": \"+919876543211\",\n  \"email\": \"ravi@example.com\",\n  \"vehicle_number\": \"TS09AB1234\",\n  \"language\": \"en\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customers"]
+            },
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "exec": [
+                    "if (pm.response.code === 201) {",
+                    "    const response = pm.response.json();",
+                    "    pm.collectionVariables.set('customerId', response.data.customer._id);",
+                    "    console.log('Customer ID saved:', response.data.customer._id);",
+                    "}"
+                  ],
+                  "type": "text/javascript"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "Get All Customers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customers"]
+            }
+          }
+        },
+        {
+          "name": "Update Customer",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ravi Kumar Updated\",\n  \"email\": \"ravi.updated@example.com\",\n  \"vehicle_number\": \"TS09AB9999\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customers/{{customerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customers", "{{customerId}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Customer",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customers/{{customerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customers", "{{customerId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reminders",
+      "item": [
+        {
+          "name": "Create Reminder",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer\": \"{{customerId}}\",\n  \"reminder_type\": \"vehicle_insurance_reminder\",\n  \"vehicle_number\": \"TS09AB1234\",\n  \"expiry_date\": \"2024-12-31\",\n  \"lead_times\": [30, 7, 3, 1],\n  \"language\": \"en\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/reminders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "reminders"]
+            },
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "exec": [
+                    "if (pm.response.code === 201) {",
+                    "    const response = pm.response.json();",
+                    "    pm.collectionVariables.set('reminderId', response.data.reminder._id);",
+                    "    console.log('Reminder ID saved:', response.data.reminder._id);",
+                    "}"
+                  ],
+                  "type": "text/javascript"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "Get All Reminders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/reminders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "reminders"]
+            }
+          }
+        },
+        {
+          "name": "Get Reminders with Filters",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/reminders?status=PENDING&reminder_type=vehicle_insurance_reminder&page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "reminders"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "PENDING"
+                },
+                {
+                  "key": "reminder_type",
+                  "value": "vehicle_insurance_reminder"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Bulk Create Reminders",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reminders\": [\n    {\n      \"customer\": \"{{customerId}}\",\n      \"reminder_type\": \"puc_certificate_reminder\",\n      \"vehicle_number\": \"TS09AB1234\",\n      \"expiry_date\": \"2024-11-30\",\n      \"lead_times\": [15, 7, 1],\n      \"language\": \"en\"\n    },\n    {\n      \"customer\": \"{{customerId}}\",\n      \"reminder_type\": \"fitness_certificate_reminder\",\n      \"vehicle_number\": \"TS09AB1234\",\n      \"expiry_date\": \"2025-01-15\",\n      \"lead_times\": [30, 15, 7, 1],\n      \"language\": \"en\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/reminders/bulk",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "reminders", "bulk"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Test Messages",
+      "item": [
+        {
+          "name": "Send Test WhatsApp Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile\": \"+919876543211\",\n  \"template_name\": \"vehicle_insurance_reminder\",\n  \"test_variables\": {\n    \"customer_name\": \"Ravi Kumar\",\n    \"vehicle_number\": \"TS09AB1234\",\n    \"expiry_date\": \"2024-12-31\",\n    \"days_left\": \"45\",\n    \"agent_name\": \"Shuraim Tech\",\n    \"agent_mobile\": \"+919876543210\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/reminders/test-message",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "reminders", "test-message"]
+            }
+          }
+        },
+        {
+          "name": "Send Test Driving License Reminder",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile\": \"+919876543211\",\n  \"template_name\": \"driving_license_reminder\",\n  \"test_variables\": {\n    \"customer_name\": \"Ravi Kumar\",\n    \"vehicle_type\": \"Car\",\n    \"license_number\": \"DL1234567890123\",\n    \"expiry_date\": \"2024-11-15\",\n    \"days_left\": \"30\",\n    \"agent_name\": \"Shuraim Tech\",\n    \"agent_mobile\": \"+919876543210\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/reminders/test-message",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "reminders", "test-message"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Message Logs",
+      "item": [
+        {
+          "name": "Get Message Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "messages"]
+            }
+          }
+        },
+        {
+          "name": "Get Filtered Message Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/messages?status=SENT&customer_mobile=9876543211&page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "messages"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "SENT"
+                },
+                {
+                  "key": "customer_mobile",
+                  "value": "9876543211"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Import",
+      "item": [
+        {
+          "name": "CSV Import (Temporarily Disabled)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/import/csv",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "import", "csv"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "MSG91 Webhook (Simulate Delivery)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"message_status\",\n  \"data\": {\n    \"message_id\": \"test_message_123\",\n    \"status\": \"delivered\",\n    \"recipient\": \"+919876543211\",\n    \"timestamp\": \"2024-01-15T10:30:00Z\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/webhook/msg91",
+              "host": ["{{baseUrl}}"],
+              "path": ["webhook", "msg91"]
+            }
+          }
+        },
+        {
+          "name": "MSG91 Webhook (Simulate STOP)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"inbound_message\",\n  \"data\": {\n    \"from\": \"+919876543211\",\n    \"text\": \"STOP\",\n    \"timestamp\": \"2024-01-15T10:35:00Z\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/webhook/msg91",
+              "host": ["{{baseUrl"]},
+              "path": ["webhook", "msg91"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
