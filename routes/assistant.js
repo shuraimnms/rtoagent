@@ -4,7 +4,6 @@ const { processQuery } = require('../controllers/assistantController');
 const { protect } = require('../middleware/auth');
 
 // @route   POST /api/v1/assistant/query
-// @desc    Process a natural language query
-router.post('/query', protect, processQuery);
+router.post('/query', processQuery);
 
 module.exports = router;

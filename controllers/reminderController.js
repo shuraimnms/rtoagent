@@ -126,39 +126,93 @@ exports.getReminders = async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    // Build filter object
-    const filter = { agent: req.agent._id };
-    
-    // Add optional filters
-    if (req.query.status) filter.status = req.query.status;
-    if (req.query.reminder_type) filter.reminder_type = req.query.reminder_type;
-    if (req.query.customer) filter.customer = req.query.customer;
+    const filterConditions = { agent: req.agent._id };
+
+    if (req.query.status && req.query.status !== 'all') {
+      filterConditions.status = req.query.status;
+    }
 
     // Date range filters
     if (req.query.expiry_from || req.query.expiry_to) {
-      filter.expiry_date = {};
-      if (req.query.expiry_from) filter.expiry_date.$gte = new Date(req.query.expiry_from);
-      if (req.query.expiry_to) filter.expiry_date.$lte = new Date(req.query.expiry_to);
+      filterConditions.expiry_date = {};
+      if (req.query.expiry_from) filterConditions.expiry_date.$gte = new Date(req.query.expiry_from);
+      if (req.query.expiry_to) filterConditions.expiry_date.$lte = new Date(req.query.expiry_to);
     }
 
     if (req.query.next_send_from || req.query.next_send_to) {
-      filter.next_send_date = {};
-      if (req.query.next_send_from) filter.next_send_date.$gte = new Date(req.query.next_send_from);
-      if (req.query.next_send_to) filter.next_send_date.$lte = new Date(req.query.next_send_to);
+      filterConditions.next_send_date = {};
+      if (req.query.next_send_from) filterConditions.next_send_date.$gte = new Date(req.query.next_send_from);
+      if (req.query.next_send_to) filterConditions.next_send_date.$lte = new Date(req.query.next_send_to);
     }
 
-    // Get reminders with pagination
-    const reminders = await Reminder.find(filter)
-      .populate('customer', 'name mobile vehicle_number email')
-      .populate('agent', 'name email mobile company_name')
-      .skip(skip)
-      .limit(limit)
-      .sort({ next_send_date: 1, createdAt: -1 });
+    // Build the base aggregation pipeline with lookups
+    const basePipeline = [
+      {
+        $lookup: {
+          from: 'customers',
+          localField: 'customer',
+          foreignField: '_id',
+          as: 'customer'
+        }
+      },
+      {
+        $unwind: {
+          path: '$customer',
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $lookup: {
+          from: 'agents',
+          localField: 'agent',
+          foreignField: '_id',
+          as: 'agentInfo'
+        }
+      },
+      {
+        $unwind: {
+          path: '$agentInfo',
+          preserveNullAndEmptyArrays: true
+        }
+      }
+    ];
+
+    // Add search conditions to filterConditions
+    if (req.query.search) {
+      const searchTerm = req.query.search.trim();
+      if (searchTerm) {
+        const searchRegex = new RegExp(searchTerm.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&'), 'i');
+        filterConditions.$or = [
+          { 'customer.name': searchRegex },
+          { vehicle_number: searchRegex },
+          { reminder_type: searchRegex }
+        ];
+      }
+    }
+
+    // Add the match stage after lookups
+    basePipeline.push({ $match: filterConditions });
 
     // Get total count for pagination
-    const total = await Reminder.countDocuments(filter);
+    const totalPipeline = [...basePipeline, { $count: "total" }];
+    const totalResult = await Reminder.aggregate(totalPipeline).catch(err => {
+      console.error("Aggregation total count error:", err);
+      return [];
+    });
+    const total = totalResult.length > 0 ? totalResult[0].total : 0;
 
-    // Get statistics
+    // Build data pipeline with sorting, skip, and limit
+    const dataPipeline = [
+      ...basePipeline,
+      { $sort: { next_send_date: 1, createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit }
+    ];
+
+    // Execute aggregation pipeline for data
+    const reminders = await Reminder.aggregate(dataPipeline);
+
+    // Get statistics (separate aggregation for status counts)
     const stats = await Reminder.aggregate([
       { $match: { agent: req.agent._id } },
       {
@@ -171,7 +225,7 @@ exports.getReminders = async (req, res) => {
 
     res.json({
       success: true,
-      data: { 
+      data: {
         reminders,
         statistics: stats
       },
@@ -184,6 +238,7 @@ exports.getReminders = async (req, res) => {
       filters: {
         status: req.query.status,
         reminder_type: req.query.reminder_type,
+        search: req.query.search,
         expiry_from: req.query.expiry_from,
         expiry_to: req.query.expiry_to
       }
@@ -226,9 +281,10 @@ exports.getReminder = async (req, res) => {
 
     res.json({
       success: true,
-      data: { 
+      data: {
         reminder,
-        message_logs: messageLogs 
+        message_logs: messageLogs,
+        messageLogs: messageLogs
       }
     });
 

@@ -57,6 +57,35 @@ const settingsSchema = new mongoose.Schema({
     isProduction: {
       type: Boolean,
       default: false
+    },
+    enabled: {
+      type: Boolean,
+      default: true
+    }
+  },
+  cashfree: {
+    appId: {
+      type: String,
+      trim: true
+    },
+    secretKey: {
+      type: String,
+      trim: true
+    },
+    isProduction: {
+      type: Boolean,
+      default: false
+    },
+    enabled: {
+      type: Boolean,
+      default: false
+    }
+  },
+  paymentGateway: {
+    primary: {
+      type: String,
+      enum: ['razorpay', 'cashfree'],
+      default: 'razorpay'
     }
   }
 }, {

@@ -497,6 +497,199 @@
       ]
     },
     {
+      "name": "Billing & Payments",
+      "item": [
+        {
+          "name": "Get Wallet Balance",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/billing/wallet/balance",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "billing", "wallet", "balance"]
+            }
+          }
+        },
+        {
+          "name": "Create Cashfree Topup Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw              "raw": "{\n  \"amount\": 9900,\n  \"gateway\": \"cashfree\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/billing/wallet/topup",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "billing", "wallet", "topup"]
+            },
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "exec": [
+                    "if (pm.response.code === 200) {",
+                    "    const response = pm.response.json();",
+                    "    if (response.success && response.data.gateway === 'cashfree') {",
+                    "        pm.collectionVariables.set('cashfreeOrderId', response.data.order.order_id);",
+                    "        pm.collectionVariables.set('cashfreeOrderAmount', response.data.total_amount);",
+                    "        console.log('Cashfree Order ID saved:', response.data.order.order_id);",
+                    "    }",
+                    "}"
+                  ],
+                  "type": "text/javascript"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "Create Razorpay Topup Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 200,\n  \"gateway\": \"razorpay\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/billing/wallet/topup",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "billing", "wallet", "topup"]
+            }
+          }
+        },
+        {
+          "name": "Verify Cashfree Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"gateway\": \"cashfree\",\n  \"cashfree_order_id\": \"{{cashfreeOrderId}}\",\n  \"base_amount\": 100,\n  \"transaction_fee\": 2,\n  \"gst_amount\": 0.36\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/billing/wallet/topup/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "billing", "wallet", "topup", "verify"]
+            }
+          }
+        },
+        {
+          "name": "Verify Razorpay Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+         "raw": "{\n  \"gateway\": \"razorpay\",\n  \"razorpay_order_id\": \"order_test_123\",\n  \"razorpay_payment_id\": \"pay_test_123\",\n  \"razorpay_signature\": \"signature_test_123\",\n  \"base_amount\": 100,\n  \"transaction_fee\": 2,\n  \"gst_amount\": 0.36\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/billing/wallet/topup/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "billing", "wallet", "topup", "verify"]
+            }
+          }
+        },
+        {
+          "name": "Get Transaction History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/billing/transactions?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "billing", "transactions"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Invoices",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/billing/invoices?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "billing", "invoices"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "Webhooks",
       "item": [
         {
@@ -536,8 +729,29 @@
             },
             "url": {
               "raw": "{{baseUrl}}/webhook/msg91",
-              "host": ["{{baseUrl"]},
+              "host": ["{{baseUrl}}"],
               "path": ["webhook", "msg91"]
+            }
+          }
+        },
+        {
+          "name": "Cashfree Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"order\": {\n      \"order_id\": \"CF_test_123\",\n      \"order_amount\": 102.36,\n      \"order_currency\": \"INR\",\n      \"order_status\": \"PAID\",\n      \"payment_session_id\": \"session_test_123\",\n      \"order_meta\": {\n        \"return_url\": \"https://yourdomain.com/billing?tab=topup&order_id=CF_test_123\",\n        \"notify_url\": \"https://yourdomain.com/api/v1/webhook/cashfree\"\n      }\n    },\n    \"event_time\": \"2024-01-15T10:30:00Z\"\n  },\n  \"type\": \"PAYMENT_SUCCESS_WEBHOOK\",\n  \"event\": \"order.status.update\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/webhook/cashfree",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "webhook", "cashfree"]
             }
           }
         }

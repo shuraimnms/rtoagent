@@ -31,7 +31,20 @@ const app = express();
 
 // Security middleware
 app.use(helmet());
-app.use(cors());
+
+// CORS configuration
+const allowedOrigins = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',') : [];
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
+}));
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -104,38 +117,20 @@ app.get('/api/test', (req, res) => {
 // Start scheduler
 schedulerService.start();
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({
-    success: false,
-    message: 'Something went wrong!'
-  });
-});
-
-// Add this route to check MSG91 configuration
-app.get('/api/v1/msg91/status', async (req, res) => {
-  try {
-    const msg91Service = require('./services/msg91Service');
-    const status = await msg91Service.verifyConfiguration();
-    
-    res.json({
-      success: true,
-      data: status
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error checking MSG91 configuration',
-      error: error.message
-    });
-  }
-});
 // 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({
     success: false,
     message: 'Route not found'
+  });
+});
+
+// Error handling middleware (should be last)
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({
+    success: false,
+    message: 'Something went wrong!'
   });
 });
 

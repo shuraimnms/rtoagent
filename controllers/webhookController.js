@@ -1,5 +1,9 @@
 const MessageLog = require('../models/MessageLog');
 const UnsubscribeList = require('../models/UnsubscribeList');
+const Agent = require('../models/Agent');
+const Transaction = require('../models/Transaction');
+const Invoice = require('../models/Invoice');
+const Settings = require('../models/Settings');
 
 exports.handleWebhook = async (req, res) => {
   try {
@@ -20,6 +24,66 @@ exports.handleWebhook = async (req, res) => {
   } catch (error) {
     console.error('Webhook Error:', error);
     res.status(200).json({ success: false });
+  }
+};
+
+/**
+ * Handle Cashfree payment webhook
+ */
+exports.handleCashfreeWebhook = async (req, res) => {
+  try {
+    console.log('🔄 Cashfree Webhook Received:');
+    console.log('Full JSON:', JSON.stringify(req.body, null, 2));
+
+    const {
+      order_id,
+      order_amount,
+      payment_status,
+      payment_id,
+      customer_details,
+      order_meta
+    } = req.body;
+
+    // Log the webhook data
+    console.log(`📋 Order ID: ${order_id}`);
+    console.log(`💰 Amount: ₹${order_amount}`);
+    console.log(`📊 Status: ${payment_status}`);
+    console.log(`🆔 Payment ID: ${payment_id || 'N/A'}`);
+
+    // For sandbox testing, we'll log and respond
+    // In production, you'd verify the signature and update wallet balance
+    if (payment_status === 'SUCCESS') {
+      console.log('✅ Payment Successful - Ready to update wallet balance');
+
+      // Extract agent ID from order_meta or customer_details
+      // This would need to be stored during order creation
+      const agentId = customer_details?.customer_id;
+
+      if (agentId) {
+        console.log(`👤 Agent ID: ${agentId}`);
+
+        // In production, you'd update the wallet balance here
+        // For now, just log that we'd update it
+        console.log('💳 Would update wallet balance for agent:', agentId);
+      }
+    } else {
+      console.log('❌ Payment Failed or Pending');
+    }
+
+    // Always respond with 200 OK for webhooks
+    res.status(200).json({
+      status: 'ok',
+      message: 'Webhook received successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Cashfree Webhook Error:', error);
+    // Still respond with 200 to prevent retries
+    res.status(200).json({
+      status: 'error',
+      message: 'Webhook processing failed',
+      error: error.message
+    });
   }
 };
 

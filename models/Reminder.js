@@ -62,11 +62,11 @@ reminderSchema.pre('save', function(next) {
       date.setDate(date.getDate() - days);
       return date;
     });
-    
+
     const now = new Date();
     const upcomingDates = this.scheduled_dates.filter(date => date > now);
     this.next_send_date = upcomingDates.length > 0 ? upcomingDates[0] : null;
-    
+
     if (!this.next_send_date) {
       this.status = 'COMPLETED';
     }

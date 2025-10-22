@@ -2,37 +2,37 @@ const express = require('express');
 const { body } = require('express-validator');
 const { Agent } = require('../models/associations');
 const { signToken } = require('../utils/jwt');
-const { protect } = require('../middleware/auth');
+const { protect } = require('../middleware/auth'); // Corrected import path
 const { asyncHandler, AppError } = require('../middleware/error');
+const { handleValidationErrors } = require('../middleware/validation');
 
 const router = express.Router();
 
 // Register agent (superadmin only)
-router.post('/register', 
-  protect,
+router.post('/register',
   [
     body('name').notEmpty().withMessage('Name is required'),
     body('email').isEmail().withMessage('Valid email is required'),
-    body('mobile').isMobilePhone().withMessage('Valid mobile number is required'),
+    body('mobile').notEmpty().withMessage('Valid mobile number is required'),
     body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-    body('role').isIn(['superadmin', 'agent', 'support']).withMessage('Invalid role')
+    body('company_name').notEmpty().withMessage('Company name is required'),
   ],
+  handleValidationErrors,
   asyncHandler(async (req, res, next) => {
-    // Check if agent is superadmin
-    if (req.agent.role !== 'superadmin') {
-      return next(new AppError('Only superadmin can register new agents', 403));
-    }
-
-    const { name, email, mobile, password, role } = req.body;
+    const { name, email, mobile, password, company_name } = req.body;
 
     // Check if agent already exists
     const existingAgent = await Agent.findOne({
-      where: { $or: [{ email }, { mobile }] }
+      where: {
+        [require('sequelize').Op.or]: [{ email }, { mobile }]
+      }
     });
 
     if (existingAgent) {
       return next(new AppError('Agent with this email or mobile already exists', 400));
     }
+
+    const role = 'agent'; // Default role for public registration
 
     // Create new agent
     const newAgent = await Agent.create({
@@ -40,24 +40,21 @@ router.post('/register',
       email,
       mobile,
       password,
-      role
+      role,
+      company_name,
     });
 
-    // Remove password from output
-    const agentResponse = {
-      id: newAgent.id,
-      name: newAgent.name,
-      email: newAgent.email,
-      mobile: newAgent.mobile,
-      role: newAgent.role,
-      wallet_balance: newAgent.wallet_balance,
-      created_at: newAgent.created_at
-    };
+    const token = signToken(newAgent.id, newAgent.role);
+
+    // Sanitize agent data for response
+    const agentData = newAgent.toJSON();
+    delete agentData.password;
 
     res.status(201).json({
       status: 'success',
       message: 'Agent registered successfully',
-      data: { agent: agentResponse }
+      token,
+      data: { agent: agentData }
     });
   })
 );
@@ -68,6 +65,7 @@ router.post('/login',
     body('email').isEmail().withMessage('Valid email is required'),
     body('password').notEmpty().withMessage('Password is required')
   ],
+  handleValidationErrors,
   asyncHandler(async (req, res, next) => {
     try {
       const { email, password } = req.body;
@@ -114,10 +112,10 @@ router.post('/login',
       res.status(200).json({
         status: 'success',
         message: 'Login successful',
+        token,
         data: {
-          agent: agentResponse,
-          token
-        }
+          agent: agentResponse
+        },
       });
     } catch (err) {
       console.error('Auth login error:', err);

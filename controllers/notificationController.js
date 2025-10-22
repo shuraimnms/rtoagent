@@ -104,6 +104,25 @@ const getNotifications = async (req, res) => {
   }
 };
 
+const getNotificationsForLayout = async (req, res) => {
+  try {
+    const agentId = req.agent._id;
+    const notifications = await Notification.find({
+      isActive: true,
+      $or: [{ target: 'all' }, { target: 'specific', agentId: agentId }],
+      'readBy.agentId': { $ne: agentId },
+    })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .lean();
+
+    res.json({ success: true, data: { notifications } });
+  } catch (error) {
+    console.error('Error fetching notifications for layout:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch notifications' });
+  }
+};
+
 // Mark notification as read
 const markAsRead = async (req, res) => {
   try {

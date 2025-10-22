@@ -1,4 +1,4 @@
-  const Agent = require('../models/Agent');
+const Agent = require('../models/Agent');
 const Customer = require('../models/Customer');
 const Reminder = require('../models/Reminder');
 const MessageLog = require('../models/MessageLog');
@@ -271,12 +271,14 @@ exports.getAllCustomers = async (req, res) => {
 
     res.json({
       success: true,
-      data: { customers },
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit)
+      data: {
+        customers,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit)
+        }
       }
     });
   } catch (error) {
@@ -518,7 +520,7 @@ exports.getAllTransactions = async (req, res) => {
 // Update global settings (MSG91 keys, pricing, etc.)
 exports.updateGlobalSettings = async (req, res) => {
   try {
-    const { msg91, pricing, system, razorpay } = req.body;
+    const { msg91, pricing, system, razorpay, cashfree, paymentGateway } = req.body;
 
     // Find existing settings or create new ones
     let settings = await Settings.findOne();
@@ -564,6 +566,24 @@ exports.updateGlobalSettings = async (req, res) => {
         keyId: razorpay.keyId,
         keySecret: razorpay.keySecret,
         isProduction: razorpay.isProduction,
+        enabled: razorpay.enabled !== undefined ? razorpay.enabled : settings.razorpay?.enabled || true,
+      };
+    }
+
+    // Update Cashfree settings
+    if (req.body.cashfree) {
+      settings.cashfree = {
+        appId: req.body.cashfree.appId,
+        secretKey: req.body.cashfree.secretKey,
+        isProduction: req.body.cashfree.isProduction,
+        enabled: req.body.cashfree.enabled !== undefined ? req.body.cashfree.enabled : settings.cashfree?.enabled || false,
+      };
+    }
+
+    // Update payment gateway settings
+    if (req.body.paymentGateway) {
+      settings.paymentGateway = {
+        primary: req.body.paymentGateway.primary || settings.paymentGateway?.primary || 'razorpay',
       };
     }
 
@@ -633,6 +653,8 @@ exports.getGlobalSettings = async (req, res) => {
 // Get admin dashboard stats
 exports.getDashboardStats = async (req, res) => {
   try {
+    const thirtyDaysAgo = new Date(new Date().setDate(new Date().getDate() - 30));
+
     const [
       totalAgents,
       totalCustomers,
@@ -640,20 +662,18 @@ exports.getDashboardStats = async (req, res) => {
       totalMessages,
       totalRevenue,
       recentAgents,
-      recentTransactions,
-      thirtyDaysAgo
+      recentTransactions
     ] = await Promise.all([
       Agent.countDocuments(),
       Customer.countDocuments(),
       Reminder.countDocuments(),
       MessageLog.countDocuments(),
       Transaction.aggregate([
-        { $match: { type: 'message_deduction' } },
+        { $match: { type: 'topup' } }, // Revenue should be from topups
         { $group: { _id: null, total: { $sum: '$amount' } } }
       ]),
       Agent.find().sort({ createdAt: -1 }).limit(5).select('name email createdAt'),
-      Transaction.find().populate('agent', 'name').sort({ createdAt: -1 }).limit(10),
-      new Date(new Date().setDate(new Date().getDate() - 30))
+      Transaction.find().populate('agent', 'name').sort({ createdAt: -1 }).limit(10)
     ]);
 
     // Get message status breakdown
@@ -679,21 +699,33 @@ exports.getDashboardStats = async (req, res) => {
       { $project: { date: '$_id', count: 1, _id: 0 } }
     ]);
 
-    // Get wallet usage stats (credits vs debits)
-    const walletStatsAgg = await Transaction.aggregate([
+    // Get wallet usage stats per day (daily net usage)
+    const walletUsageData = await Transaction.aggregate([
       { $match: { createdAt: { $gte: thirtyDaysAgo } } },
       {
         $group: {
-          _id: '$type',
-          total: { $sum: '$amount' }
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          credits: {
+            $sum: {
+              $cond: [{ $eq: ['$type', 'topup'] }, '$amount', 0]
+            }
+          },
+          debits: {
+            $sum: {
+              $cond: [{ $eq: ['$type', 'message_deduction'] }, { $abs: '$amount' }, 0]
+            }
+          }
         }
-      }
+      },
+      {
+        $project: {
+          date: '$_id',
+          usage: { $subtract: ['$credits', '$debits'] },
+          _id: 0
+        }
+      },
+      { $sort: { date: 1 } }
     ]);
-
-    const walletStats = {
-      credits: walletStatsAgg.find(s => s._id === 'topup')?.total || 0,
-      debits: walletStatsAgg.find(s => s._id === 'message_deduction')?.total || 0
-    };
 
     // Get recent activity from AuditLog
     const activityData = await AuditLog.find()
@@ -701,17 +733,49 @@ exports.getDashboardStats = async (req, res) => {
       .sort({ timestamp: -1 })
       .limit(5)
       .lean();
+    
+    const formattedActivity = activityData
+      ? activityData.map(log => ({
+          description: `${log.performedBy?.name || 'System'} performed ${log.action} on ${log.entityType}`,
+          timestamp: new Date(log.timestamp).toLocaleString()
+        }))
+      : [];
 
-    const formattedActivity = activityData.map(log => ({
-      description: `${log.performedBy?.name || 'System'} performed ${log.action} on ${log.entityType}`,
-      timestamp: new Date(log.timestamp).toLocaleString()
-    }));
+    // Wallet usage for the last 30 days (credits vs debits)
+    const successRateTrend = await Promise.all(
+      messagesPerDay.map(async (day) => {
+        const dayStart = new Date(day.date + 'T00:00:00.000Z');
+        const dayEnd = new Date(day.date + 'T23:59:59.999Z');
 
-    // Success Rate Trend (dummy data for now, can be implemented with more complex aggregation)
-    const successRateTrend = messagesPerDay.map(day => ({
-      date: day.date,
-      rate: 95 + Math.random() * 5 // Placeholder: Replace with actual success rate calculation
-    }));
+        const totalMessages = await MessageLog.countDocuments({
+          createdAt: { $gte: dayStart, $lte: dayEnd }
+        });
+
+        const successfulMessages = await MessageLog.countDocuments({
+          createdAt: { $gte: dayStart, $lte: dayEnd },
+          status: 'DELIVERED'
+        });
+
+        const rate = totalMessages > 0 ? (successfulMessages / totalMessages) * 100 : 0;
+
+        return {
+          date: day.date,
+          rate: Math.round(rate * 100) / 100 // Round to 2 decimal places
+        };
+      })
+    );
+    
+    const walletStats = await Transaction.aggregate([
+      { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+      {
+        $group: {
+          _id: null,
+          credits: { $sum: { $cond: [{ $gt: ['$amount', 0] }, '$amount', 0] } },
+          debits: { $sum: { $cond: [{ $lt: ['$amount', 0] }, '$amount', 0] } },
+        },
+      },
+      { $project: { _id: 0, credits: 1, debits: 1 } },
+    ]);
 
     res.json({
       success: true,
@@ -721,7 +785,7 @@ exports.getDashboardStats = async (req, res) => {
           totalCustomers,
           totalReminders,
           totalMessages,
-          totalRevenue: totalRevenue[0]?.total || 0
+          totalRevenue: totalRevenue[0] ? totalRevenue[0].total : 0,
         },
         messageStats: messageStats.reduce((acc, stat) => {
           acc[stat._id] = stat.count;
@@ -734,12 +798,14 @@ exports.getDashboardStats = async (req, res) => {
         recentAgents,
         recentTransactions,
         messagesPerDay,
-        walletStats,
+        walletUsageData,
+        walletStats: walletStats[0] || { credits: 0, debits: 0 },
         activityData: formattedActivity,
-        successRateTrend
-      }
+        successRateTrend,
+      },
     });
   } catch (error) {
+    console.error('Admin Dashboard Stats Error:', error);
     res.status(400).json({
       success: false,
       message: error.message
@@ -766,5 +832,226 @@ exports.verifyMSG91Config = async (req, res) => {
   } catch (error) {
     console.error('MSG91 verification error:', error);
     res.status(500).json({ success: false, message: 'Failed to verify MSG91 configuration' });
+  }
+};
+
+/**
+ * @desc    Reset all wallet usage data
+ * @route   POST /api/v1/admin/reset/wallet-usage
+ * @access  Private (Admin)
+ */
+exports.resetWalletUsage = async (req, res) => {
+  try {
+    // This is a destructive operation.
+    // It will delete all transactions that are not 'topup'.
+    await Transaction.deleteMany({ type: { $ne: 'topup' } });
+
+    // Reset all agent wallet balances to 0
+    await Agent.updateMany({}, { $set: { wallet_balance: 0 } });
+
+    res.json({
+      success: true,
+      message: 'All wallet usage data has been reset. Balances are now 0.'
+    });
+  } catch (error) {
+    console.error('Reset wallet usage error:', error);
+    res.status(500).json({ success: false, message: 'Failed to reset wallet usage data' });
+  }
+};
+
+/**
+ * @desc    Reset total revenue data
+ * @route   POST /api/v1/admin/reset/total-revenue
+ * @access  Private (Admin)
+ */
+exports.resetTotalRevenue = async (req, res) => {
+  try {
+    // This is a destructive operation.
+    // It will delete all 'topup' transactions.
+    await Transaction.deleteMany({ type: 'topup' });
+
+    res.json({
+      success: true,
+      message: 'Total revenue data has been reset.'
+    });
+  } catch (error) {
+    console.error('Reset total revenue error:', error);
+    res.status(500).json({ success: false, message: 'Failed to reset total revenue data' });
+  }
+};
+
+/**
+ * @desc    Get wallet usage analytics for the last 30 days
+ * @route   GET /api/v1/admin/analytics/wallet-usage
+ * @access  Private (Admin)
+ */
+exports.getWalletUsageAnalytics = async (req, res) => {
+  try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    const walletUsage = await Transaction.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: thirtyDaysAgo },
+          amount: { $lt: 0 } // Only consider debits/usage
+        }
+      },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          dailyUsage: { $sum: { $abs: '$amount' } } // Sum of absolute debits
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    let totalUsage = 0;
+    let peakUsage = 0;
+    let peakDay = 'N/A';
+
+    walletUsage.forEach(day => {
+      totalUsage += day.dailyUsage;
+      if (day.dailyUsage > peakUsage) {
+        peakUsage = day.dailyUsage;
+        peakDay = day._id;
+      }
+    });
+
+    const averageDailyUsage = walletUsage.length > 0 ? totalUsage / walletUsage.length : 0;
+
+    res.json({
+      success: true,
+      data: {
+        totalUsage: Math.round(totalUsage),
+        averageDaily: Math.round(averageDailyUsage),
+        peakDay: peakDay,
+        dailyData: walletUsage // Optionally return daily breakdown
+      }
+    });
+  } catch (error) {
+    console.error('Get wallet usage analytics error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch wallet usage analytics' });
+  }
+};
+
+/**
+ * @desc    Get revenue analytics for the last 30 days
+ * @route   GET /api/v1/admin/analytics/revenue
+ * @access  Private (Admin)
+ */
+exports.getRevenueAnalytics = async (req, res) => {
+  try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    const revenueData = await Transaction.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: thirtyDaysAgo },
+          type: 'topup' // Only consider topups as revenue
+        }
+      },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          dailyRevenue: { $sum: '$amount' }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    let totalRevenue = 0;
+    let peakRevenue = 0;
+    let peakDay = 'N/A';
+
+    revenueData.forEach(day => {
+      totalRevenue += day.dailyRevenue;
+      if (day.dailyRevenue > peakRevenue) {
+        peakRevenue = day.dailyRevenue;
+        peakDay = day._id;
+      }
+    });
+
+    const averageDailyRevenue = revenueData.length > 0 ? totalRevenue / revenueData.length : 0;
+
+    res.json({
+      success: true,
+      data: {
+        totalRevenue: Math.round(totalRevenue),
+        averageDaily: Math.round(averageDailyRevenue),
+        peakDay: peakDay,
+        dailyData: revenueData // Optionally return daily breakdown
+      }
+    });
+  } catch (error) {
+    console.error('Get revenue analytics error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch revenue analytics' });
+  }
+};
+
+/**
+ * @desc    Export wallet usage data to CSV
+ * @route   GET /api/v1/admin/export/wallet-usage
+ * @access  Private (Admin)
+ */
+exports.exportWalletUsage = async (req, res) => {
+  try {
+    const transactions = await Transaction.find({ amount: { $lt: 0 } }) // Only debits
+      .populate('agent', 'name email')
+      .sort({ createdAt: -1 });
+
+    const csvHeaders = 'Date,Agent Name,Agent Email,Description,Amount,Balance After\n';
+    const csvRows = transactions.map(tx => {
+      const date = new Date(tx.createdAt).toLocaleString('en-IN');
+      const agentName = tx.agent?.name || 'N/A';
+      const agentEmail = tx.agent?.email || 'N/A';
+      const description = tx.description || '';
+      const amount = tx.amount;
+      const balanceAfter = tx.balance_after;
+
+      return `"${date}","${agentName}","${agentEmail}","${description}","${amount}","${balanceAfter}"`;
+    }).join('\n');
+
+    const csvContent = csvHeaders + csvRows;
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="wallet_usage_export.csv"');
+    res.send(csvContent);
+  } catch (error) {
+    console.error('Export wallet usage error:', error);
+    res.status(500).json({ success: false, message: 'Failed to export wallet usage data' });
+  }
+};
+
+/**
+ * @desc    Export revenue data to CSV
+ * @route   GET /api/v1/admin/export/revenue
+ * @access  Private (Admin)
+ */
+exports.exportRevenue = async (req, res) => {
+  try {
+    const transactions = await Transaction.find({ type: 'topup' }) // Only credits/topups
+      .populate('agent', 'name email')
+      .sort({ createdAt: -1 });
+
+    const csvHeaders = 'Date,Agent Name,Agent Email,Description,Amount,Transaction ID\n';
+    const csvRows = transactions.map(tx => {
+      const date = new Date(tx.createdAt).toLocaleString('en-IN');
+      const agentName = tx.agent?.name || 'N/A';
+      const agentEmail = tx.agent?.email || 'N/A';
+      const description = tx.description || 'Top-up';
+      const amount = tx.amount;
+      const transactionId = tx.transaction_id || 'N/A';
+
+      return `"${date}","${agentName}","${agentEmail}","${description}","${amount}","${transactionId}"`;
+    }).join('\n');
+
+    const csvContent = csvHeaders + csvRows;
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="revenue_export.csv"');
+    res.send(csvContent);
+  } catch (error) {
+    console.error('Export revenue error:', error);
+    res.status(500).json({ success: false, message: 'Failed to export revenue data' });
   }
 };

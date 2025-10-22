@@ -12,7 +12,7 @@ const { protect, authorize } = require('../middleware/auth');
 router.use(protect);
 router.use(authorize('super_admin'));
 
-// Dashboard stats
+// Dashboard stats (deprecated - keeping for backward compatibility)
 router.get('/dashboard', adminController.getDashboardStats);
 
 // Global settings
@@ -45,5 +45,20 @@ router.get('/messages/export', adminController.exportMessages);
 router.get('/support/tickets', getAllTickets);
 router.get('/support/tickets/:id', getTicketById);
 router.put('/support/tickets/:id', updateTicket);
+
+// Reset functionality
+router.post('/reset/wallet-usage', adminController.resetWalletUsage);
+router.post('/reset/total-revenue', adminController.resetTotalRevenue);
+
+// Analytics endpoints
+router.get('/analytics/wallet-usage', adminController.getWalletUsageAnalytics);
+router.get('/analytics/revenue', adminController.getRevenueAnalytics);
+
+// Export endpoints
+router.get('/export/wallet-usage', adminController.exportWalletUsage);
+router.get('/export/revenue', adminController.exportRevenue);
+
+// MSG91 verification
+router.get('/settings/verify-msg91', adminController.verifyMSG91Config);
 
 module.exports = router;

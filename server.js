@@ -1,7 +1,8 @@
-﻿const express = require('express');
+﻿﻿﻿const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const morgan = require('morgan');
 require('dotenv').config();
 
 const { testConnection } = require('./src/config/database');
@@ -17,24 +18,26 @@ const billingRoutes = require('./src/routes/billing');
 const webhookRoutes = require('./src/routes/webhooks');
 const settingsRoutes = require('./src/routes/settings');
 const notificationRoutes = require('./routes/notifications');
+const assistantRoutes = require('./routes/assistant');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 
 // Security middleware
 app.use(helmet());
 
 // CORS configuration
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://yourdomain.com'] 
-    : ['http://localhost:3000', 'http://127.0.0.1:3000'],
+  origin: process.env.NODE_ENV === 'production'
+    ? ['https://yourdomain.com']
+    : ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:3001', 'http://127.0.0.1:3001'],
   credentials: true
 }));
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000, // 15 minutese
   max: 1000, // limit each IP to 1000 requests per windowMs
   message: {
     status: 'error',
@@ -46,6 +49,11 @@ app.use('/api/', limiter);
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Request logging middleware (only in development)
+if (process.env.NODE_ENV !== 'production') {
+  app.use(morgan('dev'));
+}
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -68,6 +76,7 @@ app.use('/api/v1/billing', billingRoutes);
 app.use('/api/v1/webhooks', webhookRoutes);
 app.use('/api/v1/settings', settingsRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
+app.use('/api/v1/assistant', assistantRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
