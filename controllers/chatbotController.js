@@ -257,7 +257,7 @@ My AI continuously improves delivery timing based on customer responses.`
   'show me everything your ai can do': {
     type: 'info',
     response: `Hello! I'm your Smart RTO Assistant, powered by NLP + Automation + Machine Learning.
-I can:
+I can: 
 
 Handle reminders, WhatsApp messages, and reports.
 
@@ -286,15 +286,13 @@ Just say:
 // Action keywords and their handlers
 const ACTION_KEYWORDS = {
   // Show expiring vehicles
-  'show vehicles expiring': 'show_expiring_vehicles',
-  'expiring vehicles': 'show_expiring_vehicles',
-  'vehicles expiring': 'show_expiring_vehicles',
-  'show expiring': 'show_expiring_vehicles',
+  'expiring': 'show_expiring_vehicles',
+  'expiries': 'show_expiring_vehicles',
+  'reminders': 'show_expiring_vehicles',
 
   // Show customers
-  'show customers': 'show_customers',
-  'list customers': 'show_customers',
-  'my customers': 'show_customers',
+  'customers': 'show_customers',
+  'clients': 'show_customers',
 
   // Add customer
   'add customer': 'add_customer',
@@ -302,30 +300,42 @@ const ACTION_KEYWORDS = {
   'new customer': 'add_customer',
 
   // Wallet balance
-  'wallet balance': 'check_wallet_balance',
-  'check balance': 'check_wallet_balance',
-  'my balance': 'check_wallet_balance',
+  'balance': 'check_wallet_balance',
+  'wallet': 'check_wallet_balance',
 
   // Generate report
-  'generate report': 'generate_report',
-  'monthly report': 'generate_report',
-  'weekly report': 'generate_report',
-  'daily report': 'generate_report',
+  'report': 'generate_report',
+  'stats': 'generate_report',
+  'statistics': 'generate_report',
+  'insights': 'generate_report',
 
   // Send failed messages
-  'send failed messages': 'send_failed_messages',
-  'retry failed': 'send_failed_messages',
-  'failed messages': 'send_failed_messages'
+  'failed': 'send_failed_messages',
+  'undelivered': 'send_failed_messages'
 };
 
 /**
  * Normalize text for better matching
  */
 function normalizeText(text) {
-  return text.toLowerCase()
+  const aliases = {
+    'ballance': 'balance',
+    'remider': 'reminder',
+    'reminders': 'reminder',
+    'expiring': 'expiry',
+    'features': 'feature',
+    'customer': 'client'
+  };
+
+  let normalized = text.toLowerCase()
     .replace(/[^\w\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+
+  // Apply aliases
+  const words = normalized.split(' ');
+  const aliasedWords = words.map(word => aliases[word] || word);
+  return aliasedWords.join(' ');
 }
 
 /**
@@ -333,10 +343,14 @@ function normalizeText(text) {
  */
 function findKnowledgeBaseMatch(query) {
   const normalizedQuery = normalizeText(query);
+  const queryWords = new Set(normalizedQuery.split(' '));
 
   // Direct matches first
   for (const [key, value] of Object.entries(KNOWLEDGE_BASE)) {
-    if (normalizedQuery.includes(key)) {
+    const keyWords = key.split(' ');
+    const allWordsMatch = keyWords.every(word => queryWords.has(word));
+
+    if (allWordsMatch) {
       return value;
     }
   }
@@ -349,9 +363,11 @@ function findKnowledgeBaseMatch(query) {
  */
 function findAction(query) {
   const normalizedQuery = normalizeText(query);
+  const queryWords = new Set(normalizedQuery.split(' '));
 
   for (const [keyword, action] of Object.entries(ACTION_KEYWORDS)) {
-    if (normalizedQuery.includes(keyword)) {
+    const keyWords = keyword.split(' ');
+    if (keyWords.every(word => queryWords.has(word))) {
       return action;
     }
   }
@@ -480,7 +496,7 @@ async function handleCheckWalletBalance(agentId) {
  */
 function handleAddCustomer() {
   return {
-    type: 'action',
+    type: 'info',
     response: `I'll help you add a new customer! Here's what you need:
 
 📝 Required Information:
@@ -491,7 +507,8 @@ function handleAddCustomer() {
 
 💡 You can add customers directly from the Customers page in your dashboard, or use the "Create new customer" button.
 
-Would you like me to guide you to the Customers page?`
+Would you like me to guide you to the Customers page?`,
+    followUpAction: 'navigate_to_customers'
   };
 }
 
@@ -578,7 +595,7 @@ async function handleSendFailedMessages(agentId) {
  */
 exports.handleChatbotQuery = async (req, res) => {
   try {
-    const { message } = req.body;
+    const { message, followUp } = req.body;
 
     if (!message || typeof message !== 'string') {
       return res.status(400).json({
@@ -590,6 +607,21 @@ exports.handleChatbotQuery = async (req, res) => {
     const agentId = req.agent._id;
     const query = message.trim();
 
+    // Handle follow-up actions first
+    if (followUp && (query.toLowerCase() === 'yes' || query.toLowerCase() === 'ok')) {
+      if (followUp === 'navigate_to_customers') {
+        return res.json({
+          success: true,
+          response: 'Okay, taking you to the Customers page now!',
+          type: 'navigation',
+          data: {
+            path: '/customers'
+          },
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+
     // Check for knowledge base match first
     const knowledgeMatch = findKnowledgeBaseMatch(query);
     if (knowledgeMatch) {
@@ -597,7 +629,8 @@ exports.handleChatbotQuery = async (req, res) => {
         success: true,
         response: knowledgeMatch.response,
         type: knowledgeMatch.type,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        followUpAction: knowledgeMatch.followUpAction
       });
     }
 
@@ -646,6 +679,7 @@ Try one of these commands or ask me about reminders, customers, or reports!`
       response: result.response,
       type: result.type,
       data: result.data,
+      followUpAction: result.followUpAction,
       timestamp: new Date().toISOString()
     });
 
