@@ -219,7 +219,6 @@ exports.createTopupOrder = async (req, res) => {
           customer_phone: req.agent.phone || '9999999999',
         },
         order_meta: {
-          return_url: `${process.env.FRONTEND_URL || 'https://rtoagent.netlify.app'}/payment-success?order_id={order_id}&order_token={order_token}`,
           notify_url: `${process.env.BACKEND_URL || 'https://rto-reminder-api.onrender.com'}/api/v1/webhook/cashfree`,
         },
         order_note: `Wallet top-up for agent ${req.agent._id}`,
@@ -235,7 +234,7 @@ exports.createTopupOrder = async (req, res) => {
         const response = await axios.post(`${baseUrl}/pg/orders`, orderData, {
           headers: {
             'Content-Type': 'application/json',
-            'x-api-version': '2022-09-01',
+            'x-api-version': '2023-08-01',
             'x-client-id': appId,
             'x-client-secret': secretKey,
           },
@@ -372,7 +371,7 @@ exports.verifyTopupPayment = async (req, res) => {
         const response = await axios.get(`${baseUrl}/pg/orders/${cashfree_order_id}`, {
           headers: {
             'Content-Type': 'application/json',
-            'x-api-version': '2022-09-01',
+            'x-api-version': '2023-08-01',
             'x-client-id': appId,
             'x-client-secret': secretKey,
           },
