@@ -224,7 +224,7 @@ exports.createTopupOrder = async (req, res) => {
         order_note: `Wallet top-up for agent ${req.agent._id}`,
         order_tags: {
           agentId: req.agent._id.toString(),
-          baseAmount: baseAmount.toString(),
+         baseAmount: baseAmount.toString(),
           transactionFee: transactionFee.toString(),
           gstAmount: gstAmount.toString(),
         }
