@@ -239,37 +239,12 @@ exports.createTopupOrder = async (req, res) => {
         }
       );
 
-      // Get payment session ID for the order
-      const sessionResponse = await axios.post(
-        cashfreeSettings.cashfree.isProduction
-          ? `https://api.cashfree.com/pg/orders/${orderId}/sessions`
-          : `https://sandbox.cashfree.com/pg/orders/${orderId}/sessions`,
-        {
-          payment_method: {
-            card: true,
-            netbanking: true,
-            wallet: true,
-            upi: true,
-            app: true
-          }
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-version': '2022-09-01',
-            'x-client-id': cashfreeSettings.cashfree.appId,
-            'x-client-secret': cashfreeSettings.cashfree.secretKey,
-          },
-        }
-      );
-
       res.json({
         success: true,
         data: {
           gateway: 'cashfree',
           order: {
-            ...response.data,
-            payment_session_id: sessionResponse.data.payment_session_id
+            ...response.data
           },
           base_amount: baseAmount,
           transaction_fee: transactionFee,
