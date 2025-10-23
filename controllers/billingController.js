@@ -24,7 +24,7 @@ async function initializeRazorpay() {
 }
 
 /**
- * Initializes the Cashfree SDK with credentials from the database settings.
+ * Initializes Cashfree credentials from the database settings.
  */
 async function initializeCashfree() {
   const settings = await Settings.findOne();
@@ -32,8 +32,17 @@ async function initializeCashfree() {
     throw new Error('Cashfree settings are not configured in the admin panel.');
   }
 
-  return { settings };
+  const baseUrl = settings.cashfree.isProduction ? 'https://api.cashfree.com' : 'https://sandbox.cashfree.com';
+
+  return {
+    appId: settings.cashfree.appId,
+    secretKey: settings.cashfree.secretKey,
+    baseUrl,
+    settings
+  };
 }
+
+
 
 /**
  * @desc    Get agent wallet balance
@@ -196,62 +205,61 @@ exports.createTopupOrder = async (req, res) => {
         }
       });
     } else if (selectedGateway === 'cashfree') {
-      const { settings: cashfreeSettings } = await initializeCashfree();
+      const { appId, secretKey, baseUrl } = await initializeCashfree();
 
-      if (!agent.mobile) {
-        return res.status(400).json({
-          success: false,
-          message: 'Phone number is required for Cashfree payments. Please update your profile.'
-        });
-      }
-
-      // Generate Cashfree order
       const orderId = `CF_${req.agent._id}_${Date.now()}`;
+
       const orderData = {
         order_id: orderId,
         order_amount: totalAmount,
         order_currency: "INR",
         customer_details: {
           customer_id: req.agent._id.toString(),
-          customer_email: agent.email,
-          customer_phone: agent.mobile,
+          customer_email: req.agent.email || 'customer@example.com',
+          customer_phone: req.agent.phone || '9999999999',
         },
         order_meta: {
-          return_url: `${process.env.FRONTEND_URL || 'https://rtoagent.netlify.app'}/billing?tab=topup&order_id={order_id}`,
-          notify_url: `${process.env.BACKEND_URL || 'https://yourdomain.com'}/api/v1/webhook/cashfree`,
+          return_url: `${process.env.FRONTEND_URL || 'https://rtoagent.netlify.app'}/payment-success?order_id={order_id}&order_token={order_token}`,
+          notify_url: `${process.env.BACKEND_URL || 'https://rto-reminder-api.onrender.com'}/api/v1/webhook/cashfree`,
         },
-        order_note: `Wallet topup for agent ${req.agent._id}`,
+        order_note: `Wallet top-up for agent ${req.agent._id}`,
+        order_tags: {
+          agentId: req.agent._id.toString(),
+          baseAmount: baseAmount.toString(),
+          transactionFee: transactionFee.toString(),
+          gstAmount: gstAmount.toString(),
+        }
       };
 
-      // Create Cashfree payment session using API
-      const response = await axios.post(
-        cashfreeSettings.cashfree.isProduction
-          ? 'https://api.cashfree.com/pg/orders'
-          : 'https://sandbox.cashfree.com/pg/orders',
-        orderData,
-        {
+      try {
+        const response = await axios.post(`${baseUrl}/pg/orders`, orderData, {
           headers: {
             'Content-Type': 'application/json',
             'x-api-version': '2022-09-01',
-            'x-client-id': cashfreeSettings.cashfree.appId,
-            'x-client-secret': cashfreeSettings.cashfree.secretKey,
+            'x-client-id': appId,
+            'x-client-secret': secretKey,
           },
-        }
-      );
+        });
 
-      res.json({
-        success: true,
-        data: {
-          gateway: 'cashfree',
-          order: {
-            ...response.data
-          },
-          base_amount: baseAmount,
-          transaction_fee: transactionFee,
-          gst_amount: gstAmount,
-          total_amount: totalAmount,
-        }
-      });
+        res.json({
+          success: true,
+          data: {
+            gateway: 'cashfree',
+            order: response.data,
+            base_amount: baseAmount,
+            transaction_fee: transactionFee,
+            gst_amount: gstAmount,
+            total_amount: totalAmount,
+          }
+        });
+      } catch (cashfreeError) {
+        console.error('Cashfree order creation error:', cashfreeError.response?.data || cashfreeError.message);
+        return res.status(400).json({
+          success: false,
+          message: 'Failed to create Cashfree order. Please check your Cashfree settings.',
+          error: cashfreeError.response?.data?.message || cashfreeError.message
+        });
+      }
     } else {
       return res.status(400).json({
         success: false,
@@ -343,7 +351,7 @@ exports.verifyTopupPayment = async (req, res) => {
         baseAmount: base_amount,
         transactionFee: transaction_fee,
         gstAmount: gst_amount,
-        totalAmount: base_amount + transaction_fee + gst_amount,
+        totalAmount: parseFloat((base_amount + transaction_fee + gst_amount).toFixed(2)),
         status: 'paid'
       });
 
@@ -357,96 +365,111 @@ exports.verifyTopupPayment = async (req, res) => {
         }
       });
     } else if (gateway === 'cashfree') {
-      const { settings: cashfreeSettings } = await initializeCashfree();
+      const { appId, secretKey, baseUrl } = await initializeCashfree();
 
-      // Verify Cashfree payment
-      const response = await axios.get(
-        cashfreeSettings.cashfree.isProduction
-          ? `https://api.cashfree.com/pg/orders/${cashfree_order_id}`
-          : `https://sandbox.cashfree.com/pg/orders/${cashfree_order_id}`,
-        {
+      try {
+        // Verify payment status with Cashfree
+        const response = await axios.get(`${baseUrl}/pg/orders/${cashfree_order_id}`, {
           headers: {
+            'Content-Type': 'application/json',
             'x-api-version': '2022-09-01',
-            'x-client-id': cashfreeSettings.cashfree.appId,
-            'x-client-secret': cashfreeSettings.cashfree.secretKey,
+            'x-client-id': appId,
+            'x-client-secret': secretKey,
           },
-        }
-      );
+        });
 
-      const paymentData = response.data;
-      if (paymentData.order_status !== 'PAID') {
+        const orderDetails = response.data;
+
+        if (orderDetails.order_status !== 'PAID') {
+          return res.status(400).json({
+            success: false,
+            message: 'Payment not completed or failed.'
+          });
+        }
+
+        // Check if payment already processed
+        const existingTransaction = await Transaction.findOne({
+          agent: req.agent._id,
+          reference_id: cashfree_payment_id || cashfree_order_id,
+          type: 'topup'
+        });
+
+        if (existingTransaction) {
+          return res.status(400).json({
+            success: false,
+            message: 'Payment already processed.'
+          });
+        }
+
+        // Update agent wallet balance
+        const agent = await Agent.findByIdAndUpdate(
+          req.agent._id,
+          { $inc: { wallet_balance: base_amount } },
+          { new: true }
+        );
+
+        // Create transaction record
+        const transaction = new Transaction({
+          agent: req.agent._id,
+          type: 'topup',
+          amount: base_amount,
+          balance_after: agent.wallet_balance,
+          reference_id: cashfree_payment_id || cashfree_order_id,
+          description: `Wallet top-up via Cashfree`,
+          payment_gateway_response: orderDetails
+        });
+
+        await transaction.save();
+
+        // Record transaction fee and GST
+        await Transaction.create([
+          {
+            agent: req.agent._id,
+            type: 'transaction_fee',
+            amount: -transaction_fee,
+            balance_after: agent.wallet_balance,
+            description: `Transaction fee for top-up of ₹${base_amount.toFixed(2)}`
+          },
+          {
+            agent: req.agent._id,
+            type: 'gst',
+            amount: -gst_amount,
+            balance_after: agent.wallet_balance,
+            description: `GST on transaction fee for top-up of ₹${base_amount.toFixed(2)}`
+          }
+        ]);
+
+        // Create Invoice
+        const invoiceCount = await Invoice.countDocuments();
+        const invoice = await Invoice.create({
+          agent: req.agent._id,
+          transaction: transaction._id,
+          invoiceNumber: `INV-${new Date().getFullYear()}-${String(invoiceCount + 1).padStart(6, '0')}`,
+          issueDate: new Date(),
+          baseAmount: base_amount,
+          transactionFee: transaction_fee,
+          gstAmount: gst_amount,
+          totalAmount: parseFloat((base_amount + transaction_fee + gst_amount).toFixed(2)),
+          status: 'paid'
+        });
+
+        res.json({
+          success: true,
+          message: 'Wallet topped up successfully',
+          data: {
+            new_balance: agent.wallet_balance,
+            transaction: transaction,
+            invoice: invoice
+          }
+        });
+      } catch (cashfreeError) {
+        console.error('Cashfree payment verification error:', cashfreeError.response?.data || cashfreeError.message);
         return res.status(400).json({
           success: false,
-          message: 'Payment not completed or failed'
+          message: 'Payment verification failed. Please contact support if amount was debited.',
+          error: cashfreeError.response?.data?.message || cashfreeError.message
         });
       }
-
-      // Update agent wallet balance
-      const agent = await Agent.findByIdAndUpdate(
-        req.agent._id,
-        { $inc: { wallet_balance: base_amount } },
-        { new: true }
-      );
-
-      // Create transaction record
-      const transaction = new Transaction({
-        agent: req.agent._id,
-        type: 'topup',
-        amount: base_amount,
-        balance_after: agent.wallet_balance,
-        reference_id: cashfree_payment_id || cashfree_order_id,
-        description: `Wallet top-up via Cashfree`,
-        payment_gateway_response: {
-          order_id: cashfree_order_id,
-          order_status: 'PAID',
-          payment_id: cashfree_payment_id,
-          test_mode: !cashfreeSettings.cashfree.isProduction
-        }
-      });
-
-      await transaction.save();
-
-      // Record transaction fee and GST
-      await Transaction.create([
-        {
-          agent: req.agent._id,
-          type: 'transaction_fee',
-          amount: -transaction_fee,
-          balance_after: agent.wallet_balance,
-          description: `Transaction fee for top-up of ₹${base_amount.toFixed(2)}`
-        },
-        {
-          agent: req.agent._id,
-          type: 'gst',
-          amount: -gst_amount,
-          balance_after: agent.wallet_balance,
-          description: `GST on transaction fee for top-up of ₹${base_amount.toFixed(2)}`
-        }
-      ]);
-
-      // Create Invoice
-      const invoiceCount = await Invoice.countDocuments();
-      const invoice = await Invoice.create({
-        agent: req.agent._id,
-        transaction: transaction._id,
-        invoiceNumber: `INV-${new Date().getFullYear()}-${String(invoiceCount + 1).padStart(6, '0')}`,
-        issueDate: new Date(),
-        baseAmount: base_amount,
-        transactionFee: transaction_fee,
-        gstAmount: gst_amount,
-        totalAmount: base_amount + transaction_fee + gst_amount,
-        status: 'paid'
-      });
-
-      res.json({
-        success: true,
-        message: 'Wallet topped up successfully',
-        data: {
-          new_balance: agent.wallet_balance,
-          transaction: transaction,
-          invoice: invoice
-        }
-      });
     } else {
       return res.status(400).json({
         success: false,
