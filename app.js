@@ -21,8 +21,8 @@ const webhookRoutes = require('./routes/webhook');
 const notificationRoutes = require('./routes/notifications');
 const rtoRoutes = require('./routes/rto');
 const auditRoutes = require('./routes/audit');
-const assistantRoutes = require('./routes/assistant');
 const supportRoutes = require('./routes/support');
+const chatbotRoutes = require('./routes/chatbot'); // Ensure this is correctly imported
 
 // Import services
 const schedulerService = require('./services/schedulerService');
@@ -69,8 +69,8 @@ app.use('/api/v1/import', importRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/rto', rtoRoutes);
 app.use('/api/v1/audit', auditRoutes);
-app.use('/api/v1/assistant', assistantRoutes);
 app.use('/api/v1/support', supportRoutes);
+app.use('/api/v1/chatbot', chatbotRoutes); // Ensure this is correctly used
 app.use('/webhook', webhookRoutes);
 
 // Health check
