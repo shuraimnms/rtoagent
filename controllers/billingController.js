@@ -251,10 +251,8 @@ exports.createTopupOrder = async (req, res) => {
           data: {
             gateway: 'cashfree',
             order: {
-              id: order.order_id,
+              order_id: order.order_id,
               payment_link: paymentLink,
-              amount: order.order_amount,
-              status: order.order_status,
             },
             base_amount: baseAmount,
             transaction_fee: transactionFee,
