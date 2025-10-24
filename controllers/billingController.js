@@ -157,10 +157,10 @@ exports.createTopupOrder = async (req, res) => {
   try {
     const { amount, gateway = 'razorpay' } = req.body;
 
-    if (!amount || amount < 99) { // amount is now in INR
+    if (!amount || amount < 1) { // amount is in INR
       return res.status(400).json({
         success: false,
-        message: 'Minimum topup amount is ₹99'
+        message: 'Minimum top-up amount is ₹1'
       });
     }
 

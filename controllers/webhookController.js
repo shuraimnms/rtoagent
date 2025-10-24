@@ -48,7 +48,7 @@ exports.handleCashfreeWebhook = async (req, res) => {
     console.log(`📋 Order ID: ${order_id}`);
     console.log(`💰 Amount: ₹${order_amount}`);
     console.log(`📊 Status: ${payment_status}`);
-    console.log(`🆔 Payment ID: ${payment_id || 'N/A'}`);
+    console.log(`🆔 Payment ID: ${cf_payment_id || 'N/A'}`);
     console.log(`🔔 Event Type: ${type}`);
 
     // We are interested in successful payment events
