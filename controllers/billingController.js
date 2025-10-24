@@ -243,8 +243,8 @@ exports.createTopupOrder = async (req, res) => {
 
         const order = response.data;
 
-        // ✅ Add payment link manually (Cashfree Hosted Checkout)
-        const paymentLink = `https://payments.cashfree.com/pg/${order.payment_session_id}`;
+        // Use the payment_session_id from the response to construct the payment link
+        const paymentLink = `${baseUrl.replace('api.', 'payments.')}/pg/${order.payment_session_id}`;
 
         res.json({
           success: true,
