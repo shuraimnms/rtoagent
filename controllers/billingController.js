@@ -219,12 +219,13 @@ exports.createTopupOrder = async (req, res) => {
           customer_phone: req.agent.phone || '9999999999',
         },
         order_meta: {
+          return_url: `${process.env.FRONTEND_URL || 'https://rtoagent.netlify.app'}/billing?order_id={order_id}&status={order_status}`,
           notify_url: `${process.env.BACKEND_URL || 'https://rto-reminder-api.onrender.com'}/api/v1/webhook/cashfree`,
         },
         order_note: `Wallet top-up for agent ${req.agent._id}`,
         order_tags: {
           agentId: req.agent._id.toString(),
-         baseAmount: baseAmount.toString(),
+          baseAmount: baseAmount.toString(),
           transactionFee: transactionFee.toString(),
           gstAmount: gstAmount.toString(),
         }
@@ -240,11 +241,21 @@ exports.createTopupOrder = async (req, res) => {
           },
         });
 
+        const order = response.data;
+
+        // ✅ Add payment link manually (Cashfree Hosted Checkout)
+        const paymentLink = `https://payments.cashfree.com/pg/${order.payment_session_id}`;
+
         res.json({
           success: true,
           data: {
             gateway: 'cashfree',
-            order: response.data,
+            order: {
+              id: order.order_id,
+              payment_link: paymentLink,
+              amount: order.order_amount,
+              status: order.order_status,
+            },
             base_amount: baseAmount,
             transaction_fee: transactionFee,
             gst_amount: gstAmount,
