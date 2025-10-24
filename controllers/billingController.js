@@ -175,6 +175,10 @@ exports.createTopupOrder = async (req, res) => {
     const primaryGateway = settings?.paymentGateway?.primary || 'razorpay';
     const selectedGateway = gateway || primaryGateway;
 
+    console.log(`DEBUG: Request gateway (req.body.gateway): ${gateway}`);
+    console.log(`DEBUG: Primary gateway from settings: ${primaryGateway}`);
+    console.log(`DEBUG: Selected gateway for processing: ${selectedGateway}`);
+
     if (selectedGateway === 'razorpay') {
       const { instance, settings: razorpaySettings } = await initializeRazorpay();
 
@@ -219,7 +223,7 @@ exports.createTopupOrder = async (req, res) => {
           customer_phone: req.agent.phone || '9999999999',
         },
         order_meta: {
-          return_url: `${process.env.FRONTEND_URL || 'https://rtoagent.netlify.app'}/billing?order_id={order_id}&status={order_status}`,
+          return_url: `${process.env.FRONTEND_URL}/billing?order_id={order_id}&status={order_status}`,
           notify_url: `${process.env.BACKEND_URL || 'https://rto-reminder-api.onrender.com'}/api/v1/webhook/cashfree`,
         },
         order_note: `Wallet top-up for agent ${req.agent._id}`,
