@@ -36,84 +36,38 @@ exports.handleCashfreeWebhook = async (req, res) => {
     console.log('Full JSON:', JSON.stringify(req.body, null, 2));
 
     const {
-      data: {
-        order: { order_id, order_amount, order_tags },
-        payment: { payment_status, cf_payment_id },
-        customer_details,
-      },
-      type,
+      order_id,
+      order_amount,
+      payment_status,
+      payment_id,
+      customer_details,
+      order_meta
     } = req.body;
 
     // Log the webhook data
     console.log(`📋 Order ID: ${order_id}`);
     console.log(`💰 Amount: ₹${order_amount}`);
     console.log(`📊 Status: ${payment_status}`);
-    console.log(`🆔 Payment ID: ${cf_payment_id || 'N/A'}`);
-    console.log(`🔔 Event Type: ${type}`);
+    console.log(`🆔 Payment ID: ${payment_id || 'N/A'}`);
 
-    // We are interested in successful payment events
-    if (type === 'PAYMENT_SUCCESS_WEBHOOK' && payment_status === 'SUCCESS') {
+    // For sandbox testing, we'll log and respond
+    // In production, you'd verify the signature and update wallet balance
+    if (payment_status === 'SUCCESS') {
       console.log('✅ Payment Successful - Ready to update wallet balance');
 
-      const agentId = order_tags?.agentId;
-      const baseAmount = parseFloat(order_tags?.baseAmount);
-      const transactionFee = parseFloat(order_tags?.transactionFee);
-      const gstAmount = parseFloat(order_tags?.gstAmount);
+      // Extract agent ID from order_meta or customer_details
+      // This would need to be stored during order creation
+      const agentId = customer_details?.customer_id;
 
-      if (!agentId || isNaN(baseAmount)) {
-        console.error('❌ Missing agentId or baseAmount in webhook order_tags.');
-        return res.status(400).json({ status: 'error', message: 'Missing required tags.' });
+      if (agentId) {
+        console.log(`👤 Agent ID: ${agentId}`);
+
+        // In production, you'd update the wallet balance here
+        // For now, just log that we'd update it
+        console.log('💳 Would update wallet balance for agent:', agentId);
       }
-
-      console.log(`👤 Agent ID: ${agentId}, Base Amount: ${baseAmount}`);
-
-      // --- Idempotency Check: Ensure we don't process the same payment twice ---
-      const existingTransaction = await Transaction.findOne({ reference_id: cf_payment_id });
-      if (existingTransaction) {
-        console.log(`⚠️ Payment ${cf_payment_id} already processed. Skipping.`);
-        return res.status(200).json({ status: 'ok', message: 'Webhook already processed.' });
-      }
-
-      // --- Update Wallet and Create Records ---
-      const agent = await Agent.findByIdAndUpdate(
-        agentId,
-        { $inc: { wallet_balance: baseAmount } },
-        { new: true }
-      );
-
-      if (!agent) {
-        console.error(`❌ Agent with ID ${agentId} not found.`);
-        return res.status(404).json({ status: 'error', message: 'Agent not found.' });
-      }
-
-      const transaction = await Transaction.create({
-        agent: agentId,
-        type: 'topup',
-        amount: baseAmount,
-        balance_after: agent.wallet_balance,
-        reference_id: cf_payment_id,
-        description: `Wallet top-up via Cashfree`,
-        payment_gateway_response: req.body.data,
-      });
-
-      // Create Invoice
-      const invoiceCount = await Invoice.countDocuments();
-      await Invoice.create({
-        agent: agentId,
-        transaction: transaction._id,
-        invoiceNumber: `INV-${new Date().getFullYear()}-${String(invoiceCount + 1).padStart(6, '0')}`,
-        issueDate: new Date(),
-        baseAmount: baseAmount,
-        transactionFee: transactionFee,
-        gstAmount: gstAmount,
-        totalAmount: order_amount,
-        status: 'paid',
-      });
-
-      console.log(`💳 Wallet updated for agent ${agentId}. New balance: ₹${agent.wallet_balance}`);
-
     } else {
-      console.log(`🔶 Ignoring webhook event type "${type}" with status "${payment_status}"`);
+      console.log('❌ Payment Failed or Pending');
     }
 
     // Always respond with 200 OK for webhooks
