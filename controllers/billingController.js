@@ -395,80 +395,24 @@ exports.verifyTopupPayment = async (req, res) => {
           });
         }
 
-        // Check if payment already processed
+        // Idempotency Check: Check if the transaction has already been processed by the webhook
         const existingTransaction = await Transaction.findOne({
           agent: req.agent._id,
-          reference_id: cashfree_payment_id || cashfree_order_id,
+          reference_id: orderDetails.cf_order_id || cashfree_order_id,
           type: 'topup'
         });
 
         if (existingTransaction) {
-          return res.status(400).json({
-            success: false,
-            message: 'Payment already processed.'
+          console.log(`Verification for order ${cashfree_order_id} already processed by webhook. Responding success.`);
+          return res.json({
+            success: true,
+            message: 'Payment successfully verified.'
           });
         }
 
-        // Update agent wallet balance
-        const agent = await Agent.findByIdAndUpdate(
-          req.agent._id,
-          { $inc: { wallet_balance: base_amount } },
-          { new: true }
-        );
-
-        // Create transaction record
-        const transaction = new Transaction({
-          agent: req.agent._id,
-          type: 'topup',
-          amount: base_amount,
-          balance_after: agent.wallet_balance,
-          reference_id: cashfree_payment_id || cashfree_order_id,
-          description: `Wallet top-up via Cashfree`,
-          payment_gateway_response: orderDetails
-        });
-
-        await transaction.save();
-
-        // Record transaction fee and GST
-        await Transaction.create([
-          {
-            agent: req.agent._id,
-            type: 'transaction_fee',
-            amount: -transaction_fee,
-            balance_after: agent.wallet_balance,
-            description: `Transaction fee for top-up of ₹${base_amount.toFixed(2)}`
-          },
-          {
-            agent: req.agent._id,
-            type: 'gst',
-            amount: -gst_amount,
-            balance_after: agent.wallet_balance,
-            description: `GST on transaction fee for top-up of ₹${base_amount.toFixed(2)}`
-          }
-        ]);
-
-        // Create Invoice
-        const invoiceCount = await Invoice.countDocuments();
-        const invoice = await Invoice.create({
-          agent: req.agent._id,
-          transaction: transaction._id,
-          invoiceNumber: `INV-${new Date().getFullYear()}-${String(invoiceCount + 1).padStart(6, '0')}`,
-          issueDate: new Date(),
-          baseAmount: base_amount,
-          transactionFee: transaction_fee,
-          gstAmount: gst_amount,
-          totalAmount: parseFloat((base_amount + transaction_fee + gst_amount).toFixed(2)),
-          status: 'paid'
-        });
-
         res.json({
           success: true,
-          message: 'Wallet topped up successfully',
-          data: {
-            new_balance: agent.wallet_balance,
-            transaction: transaction,
-            invoice: invoice
-          }
+          message: 'Payment successfully verified. Wallet will be updated shortly.'
         });
       } catch (cashfreeError) {
         console.error('Cashfree payment verification error:', cashfreeError.response?.data || cashfreeError.message);
