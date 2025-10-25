@@ -624,7 +624,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"gateway\": \"razorpay\",\n  \"razorpay_order_id\": \"order_xxxxxxxxxxxxxx\", // Get this from the frontend network request after a test payment\n  \"razorpay_payment_id\": \"pay_xxxxxxxxxxxxxx\", // Get this from the frontend network request\n  \"razorpay_signature\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", // Get this from the frontend network request\n  \"base_amount\": 200,\n  \"transaction_fee\": 4,\n  \"gst_amount\": 0.72\n}",
+              "raw": "{\n  \"gateway\": \"razorpay\",\n  \"razorpay_order_id\": \"order_xxxxxxxxxxxxxx\", // Get this from the frontend network request after a test payment\n  \"razorpay_payment_id\": \"pay_xxxxxxxxxxxxxx\", // Get this from the frontend network request\n  \"razorpay_signature\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" // Get this from the frontend network request\n}",
               "options": {
                 "raw": {
                   "language": "json"

@@ -27,65 +27,7 @@ exports.handleWebhook = async (req, res) => {
   }
 };
 
-/**
- * Handle Cashfree payment webhook
- */
-exports.handleCashfreeWebhook = async (req, res) => {
-  try {
-    console.log('🔄 Cashfree Webhook Received:');
-    console.log('Full JSON:', JSON.stringify(req.body, null, 2));
 
-    const {
-      order_id,
-      order_amount,
-      payment_status,
-      payment_id,
-      customer_details,
-      order_meta
-    } = req.body;
-
-    // Log the webhook data
-    console.log(`📋 Order ID: ${order_id}`);
-    console.log(`💰 Amount: ₹${order_amount}`);
-    console.log(`📊 Status: ${payment_status}`);
-    console.log(`🆔 Payment ID: ${payment_id || 'N/A'}`);
-
-    // For sandbox testing, we'll log and respond
-    // In production, you'd verify the signature and update wallet balance
-    if (payment_status === 'SUCCESS') {
-      console.log('✅ Payment Successful - Ready to update wallet balance');
-
-      // Extract agent ID from order_meta or customer_details
-      // This would need to be stored during order creation
-      const agentId = customer_details?.customer_id;
-
-      if (agentId) {
-        console.log(`👤 Agent ID: ${agentId}`);
-
-        // In production, you'd update the wallet balance here
-        // For now, just log that we'd update it
-        console.log('💳 Would update wallet balance for agent:', agentId);
-      }
-    } else {
-      console.log('❌ Payment Failed or Pending');
-    }
-
-    // Always respond with 200 OK for webhooks
-    res.status(200).json({
-      status: 'ok',
-      message: 'Webhook received successfully'
-    });
-
-  } catch (error) {
-    console.error('❌ Cashfree Webhook Error:', error);
-    // Still respond with 200 to prevent retries
-    res.status(200).json({
-      status: 'error',
-      message: 'Webhook processing failed',
-      error: error.message
-    });
-  }
-};
 
 exports.handleMessageStatus = async (data) => {
   const { message_id, status, recipient, timestamp } = data;
@@ -124,5 +66,132 @@ exports.handleInboundMessage = async (data) => {
       },
       { upsert: true, new: true }
     );
+  }
+};
+
+exports.handleJojoUpiWebhook = async (req, res) => {
+  try {
+    const { user, orderid, amount, txn_status, utr_number, received_from, date, api_txn_id, transactions_id } = req.body;
+
+    console.log('JojoUPI Webhook received:', req.body);
+
+    // Find the transaction by order ID
+    const transaction = await Transaction.findOne({ orderId: orderid });
+
+    if (!transaction) {
+      console.log('Transaction not found for order ID:', orderid);
+      return res.status(200).json({ success: false, message: 'Transaction not found' });
+    }
+
+    if (txn_status === 'SUCCESS') {
+      // Update transaction status
+      transaction.status = 'completed';
+      transaction.utrNumber = utr_number;
+      transaction.completedAt = new Date(date);
+      await transaction.save();
+
+      // Update wallet balance
+      const agent = await Agent.findById(transaction.agent);
+      if (agent) {
+        agent.wallet_balance += parseFloat(amount);
+        await agent.save();
+      }
+
+      // Create invoice
+      const invoice = new Invoice({
+        agent: transaction.agent,
+        invoiceNumber: `INV-${Date.now()}`,
+        items: [{
+          description: 'Wallet Top-up',
+          amount: parseFloat(amount),
+          quantity: 1
+        }],
+        totalAmount: parseFloat(amount),
+        status: 'paid',
+        issueDate: new Date(),
+        dueDate: new Date()
+      });
+      await invoice.save();
+
+      console.log('Payment processed successfully for order:', orderid);
+    } else if (txn_status === 'FAILED') {
+      transaction.status = 'failed';
+      await transaction.save();
+      console.log('Payment failed for order:', orderid);
+    }
+
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('JojoUPI Webhook Error:', error);
+    res.status(200).json({ success: false });
+  }
+};
+
+exports.handleRazorpayWebhook = async (req, res) => {
+  try {
+    const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    const expectedSignature = req.headers['x-razorpay-signature'];
+
+    // Verify webhook signature (implement signature verification)
+    // const crypto = require('crypto');
+    // const expectedSignature = crypto.createHmac('sha256', secret).update(JSON.stringify(req.body)).digest('hex');
+
+    const event = req.body.event;
+    const paymentEntity = req.body.payload.payment.entity;
+
+    console.log('Razorpay Webhook received:', event);
+
+    if (event === 'payment.captured') {
+      const orderId = paymentEntity.notes?.orderId;
+
+      if (!orderId) {
+        console.log('No order ID in Razorpay webhook');
+        return res.status(200).json({ success: false });
+      }
+
+      // Find the transaction by order ID
+      const transaction = await Transaction.findOne({ orderId: orderId });
+
+      if (!transaction) {
+        console.log('Transaction not found for order ID:', orderId);
+        return res.status(200).json({ success: false, message: 'Transaction not found' });
+      }
+
+      // Update transaction status
+      transaction.status = 'completed';
+      transaction.utrNumber = paymentEntity.id;
+      transaction.completedAt = new Date(paymentEntity.captured_at * 1000);
+      await transaction.save();
+
+      // Update wallet balance
+      const agent = await Agent.findById(transaction.agent);
+      if (agent) {
+        agent.wallet_balance += transaction.amount;
+        await agent.save();
+      }
+
+      // Create invoice
+      const invoice = new Invoice({
+        agent: transaction.agent,
+        invoiceNumber: `INV-${Date.now()}`,
+        items: [{
+          description: 'Wallet Top-up',
+          amount: transaction.amount,
+          quantity: 1
+        }],
+        totalAmount: transaction.amount,
+        status: 'paid',
+        issueDate: new Date(),
+        dueDate: new Date()
+      });
+      await invoice.save();
+
+      console.log('Razorpay payment processed successfully for order:', orderId);
+    }
+
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Razorpay Webhook Error:', error);
+    res.status(200).json({ success: false });
   }
 };

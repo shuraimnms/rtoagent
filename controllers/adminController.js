@@ -580,10 +580,20 @@ exports.updateGlobalSettings = async (req, res) => {
       };
     }
 
+    // Update JojoUPI settings
+    if (req.body.jojoUpi) {
+      settings.jojoUpi = {
+        apiKey: req.body.jojoUpi.apiKey,
+        apiUrl: req.body.jojoUpi.apiUrl,
+        callbackUrl: req.body.jojoUpi.callbackUrl,
+        enabled: req.body.jojoUpi.enabled !== undefined ? req.body.jojoUpi.enabled : settings.jojoUpi?.enabled || true,
+      };
+    }
+
     // Update payment gateway settings
     if (req.body.paymentGateway) {
       settings.paymentGateway = {
-        primary: req.body.paymentGateway.primary || settings.paymentGateway?.primary || 'razorpay',
+        primary: req.body.paymentGateway.primary || settings.paymentGateway?.primary || 'jojoupi',
       };
     }
 

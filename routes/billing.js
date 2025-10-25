@@ -9,7 +9,7 @@ router.use(protect);
 // Wallet balance routes
 router.get('/wallet/balance', billingController.getWalletBalance);
 router.post('/wallet/topup', billingController.createTopupOrder);
-router.post('/wallet/topup/verify', billingController.verifyTopupPayment);
+
 
 // Transaction routes
 router.get('/transactions', billingController.getTransactions);
