@@ -1039,7 +1039,7 @@ exports.exportWalletUsage = async (req, res) => {
  */
 exports.exportRevenue = async (req, res) => {
   try {
-    const transactions = await Transaction.find({ type: 'topup' }) // Only credits/topups
+    const transactions = await Transaction.find({ type: 'topup' }) 
       .populate('agent', 'name email')
       .sort({ createdAt: -1 });
 

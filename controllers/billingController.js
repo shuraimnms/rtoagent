@@ -126,23 +126,32 @@ exports.createTopupOrder = async (req, res) => {
 
     const topupAmount = parseFloat(amount);
 
+    // Get agent to check current balance
+    const agent = await Agent.findById(req.agent._id);
+    if (!agent) {
+      return res.status(404).json({
+        success: false,
+        message: 'Agent not found'
+      });
+    }
+
     // Get settings
     const settings = await require('../models/Settings').findOne();
     if (!settings) {
       return res.status(400).json({
-        success: false,
-        message: 'Payment gateway not configured'
+        success: false, 
+        message: 'Payment gateway not configured' 
       });
     }
 
     if (!settings.jojoUpi?.enabled || !settings.jojoUpi?.apiKey) {
       return res.status(400).json({
-        success: false,
-        message: 'JojoUPI not configured'
+        success: false, 
+        message: 'JojoUPI not configured' 
       });
     }
 
-    // Generate unique order ID
+    // Generate unique order ID for the transaction
     const orderId = `TOPUP_${Date.now()}_${req.agent._id}`;
 
     // Create transaction record (pending)
@@ -151,6 +160,7 @@ exports.createTopupOrder = async (req, res) => {
       type: 'topup',
       amount: topupAmount,
       orderId: orderId,
+      balance_after: agent.wallet_balance, // Set current balance for the pending transaction
       status: 'pending',
       description: `Wallet top-up of ₹${topupAmount.toFixed(2)}`,
       gateway: 'jojoupi'
@@ -164,7 +174,7 @@ exports.createTopupOrder = async (req, res) => {
       orderid: orderId,
       amount: topupAmount.toFixed(2),
       user: req.agent.email || req.agent._id,
-      callback_url: settings.jojoUpi.callbackUrl
+      callback_url: settings.jojoUpi.callbackUrl,
     };
 
     // Make request to JojoUPI API
@@ -179,7 +189,7 @@ exports.createTopupOrder = async (req, res) => {
           orderId: orderId,
           gateway: 'jojoupi',
           paymentUrl: response.data.payment_url,
-          amount: topupAmount
+          amount: topupAmount,
         }
       });
     } else {

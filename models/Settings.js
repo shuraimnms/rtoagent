@@ -45,37 +45,6 @@ const settingsSchema = new mongoose.Schema({
       max: 60
     }
   },
-  paymentGateway: {
-    primary: {
-      type: String,
-      enum: ['razorpay', 'cashfree', 'jojoupi'],
-      default: 'jojoupi'
-    }
-  },
-  razorpay: {
-    enabled: {
-      type: Boolean,
-      default: false
-    },
-    keyId: String,
-    keySecret: String,
-    isProduction: {
-      type: Boolean,
-      default: false
-    }
-  },
-  cashfree: {
-    enabled: {
-      type: Boolean,
-      default: false
-    },
-    appId: String,
-    secretKey: String,
-    isProduction: {
-      type: Boolean,
-      default: false
-    }
-  },
   jojoUpi: {
     enabled: {
       type: Boolean,
