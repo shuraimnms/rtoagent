@@ -560,25 +560,7 @@ exports.updateGlobalSettings = async (req, res) => {
       };
     }
 
-    // Update Razorpay settings
-    if (razorpay) {
-      settings.razorpay = {
-        keyId: razorpay.keyId,
-        keySecret: razorpay.keySecret,
-        isProduction: razorpay.isProduction,
-        enabled: razorpay.enabled !== undefined ? razorpay.enabled : settings.razorpay?.enabled || true,
-      };
-    }
 
-    // Update Cashfree settings
-    if (req.body.cashfree) {
-      settings.cashfree = {
-        appId: req.body.cashfree.appId,
-        secretKey: req.body.cashfree.secretKey,
-        isProduction: req.body.cashfree.isProduction,
-        enabled: req.body.cashfree.enabled !== undefined ? req.body.cashfree.enabled : settings.cashfree?.enabled || false,
-      };
-    }
 
     // Update JojoUPI settings
     if (req.body.jojoUpi) {

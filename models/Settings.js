@@ -53,7 +53,7 @@ const settingsSchema = new mongoose.Schema({
     apiKey: String,
     apiUrl: {
       type: String,
-      default: 'https://api.jojoupi.com'
+      default: 'https://upi.jojopay.in/partner/auth-login.php'
     },
     callbackUrl: String
   }
