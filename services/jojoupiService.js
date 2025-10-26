@@ -4,7 +4,7 @@ const axios = require('axios');
 class JOJOUPIService {
   constructor() {
     this.apiKey = process.env.JOJOUPI_API_KEY || '17f13317ce1ea927ccedb77fa3732b61';
-    this.baseURL = process.env.JOJOUPI_BASE_URL || 'https://api.upi.jojopay.in';
+    this.baseURL = process.env.JOJOUPI_BASE_URL || 'https://upi.jojopay.in';
     this.callbackURL = process.env.JOJOUPI_CALLBACK_URL || 'https://rtoagent.netlify.app/api/v1/webhook/jojoupi';
   }
 
