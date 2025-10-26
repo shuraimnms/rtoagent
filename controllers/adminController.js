@@ -572,10 +572,21 @@ exports.updateGlobalSettings = async (req, res) => {
       };
     }
 
+    // Update Cashfree settings
+    if (req.body.cashfree) {
+      settings.cashfree = {
+        appId: req.body.cashfree.appId,
+        secretKey: req.body.cashfree.secretKey,
+        baseUrl: req.body.cashfree.baseUrl,
+        callbackUrl: req.body.cashfree.callbackUrl,
+        enabled: req.body.cashfree.enabled !== undefined ? req.body.cashfree.enabled : settings.cashfree?.enabled || true,
+      };
+    }
+
     // Update payment gateway settings
     if (req.body.paymentGateway) {
       settings.paymentGateway = {
-        primary: req.body.paymentGateway.primary || settings.paymentGateway?.primary || 'jojoupi',
+        primary: req.body.paymentGateway.primary || settings.paymentGateway?.primary || 'cashfree',
       };
     }
 

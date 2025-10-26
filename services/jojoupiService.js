@@ -3,9 +3,34 @@ const axios = require('axios');
 
 class JOJOUPIService {
   constructor() {
-    this.apiKey = process.env.JOJOUPI_API_KEY || '17f13317ce1ea927ccedb77fa3732b61';
-    this.baseURL = process.env.JOJOUPI_BASE_URL || 'https://upi.jojopay.in';
-    this.callbackURL = process.env.JOJOUPI_CALLBACK_URL || `${process.env.BASE_URL}/api/v1/webhook/jojoupi`;
+    // Load settings from database
+    this.loadSettings();
+  }
+
+  async loadSettings() {
+    try {
+      const Settings = require('../models/Settings');
+      const settings = await Settings.findOne();
+      if (settings && settings.jojoUpi) {
+        this.apiKey = settings.jojoUpi.apiKey;
+        this.baseURL = settings.jojoUpi.apiUrl || 'https://upi.jojopay.in';
+        this.callbackURL = settings.jojoUpi.callbackUrl || `${process.env.BASE_URL}/api/v1/webhook/jojoupi`;
+        this.enabled = settings.jojoUpi.enabled !== false;
+      } else {
+        // Fallback to environment variables
+        this.apiKey = process.env.JOJOUPI_API_KEY || '17f13317ce1ea927ccedb77fa3732b61';
+        this.baseURL = process.env.JOJOUPI_BASE_URL || 'https://upi.jojopay.in';
+        this.callbackURL = process.env.JOJOUPI_CALLBACK_URL || `${process.env.BASE_URL}/api/v1/webhook/jojoupi`;
+        this.enabled = true;
+      }
+    } catch (error) {
+      console.error('Error loading JOJOUPI settings:', error);
+      // Fallback to environment variables
+      this.apiKey = process.env.JOJOUPI_API_KEY || '17f13317ce1ea927ccedb77fa3732b61';
+      this.baseURL = process.env.JOJOUPI_BASE_URL || 'https://upi.jojopay.in';
+      this.callbackURL = process.env.JOJOUPI_CALLBACK_URL || `${process.env.BASE_URL}/api/v1/webhook/jojoupi`;
+      this.enabled = true;
+    }
   }
 
   /**

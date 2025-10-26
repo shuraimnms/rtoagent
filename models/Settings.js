@@ -56,6 +56,26 @@ const settingsSchema = new mongoose.Schema({
       default: 'https://upi.jojopay.in/partner/auth-login.php'
     },
     callbackUrl: String
+  },
+  cashfree: {
+    enabled: {
+      type: Boolean,
+      default: true
+    },
+    appId: String,
+    secretKey: String,
+    baseUrl: {
+      type: String,
+      default: 'https://api.cashfree.com/pg'
+    },
+    callbackUrl: String
+  },
+  paymentGateway: {
+    primary: {
+      type: String,
+      enum: ['cashfree', 'jojoupi'],
+      default: 'cashfree'
+    }
   }
 
 }, {

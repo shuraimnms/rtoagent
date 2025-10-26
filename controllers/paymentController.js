@@ -1,6 +1,7 @@
 const Agent = require('../models/Agent');
 const Transaction = require('../models/Transaction');
 const JOJOUPIService = require('../services/jojoupiService');
+const CashfreeService = require('../services/cashfreeService');
 
 /**
  * @desc    Create payment link for wallet top-up
@@ -28,8 +29,18 @@ exports.createPaymentLink = async (req, res) => {
       });
     }
 
-    // Create payment link
-    const result = await JOJOUPIService.createPaymentLink(agent, amount, purpose);
+    // Create payment link - use Cashfree as primary, fallback to JOJOUPI
+    let result;
+    try {
+      result = await CashfreeService.createPaymentLink(agent, amount, purpose);
+      if (!result.success) {
+        console.log('Cashfree failed, trying JOJOUPI as fallback');
+        result = await JOJOUPIService.createPaymentLink(agent, amount, purpose);
+      }
+    } catch (error) {
+      console.log('Cashfree error, trying JOJOUPI as fallback:', error.message);
+      result = await JOJOUPIService.createPaymentLink(agent, amount, purpose);
+    }
 
     if (result.success) {
       // Create pending transaction record
@@ -41,7 +52,7 @@ exports.createPaymentLink = async (req, res) => {
         description: `Wallet top-up - ${purpose}`,
         reference_id: result.order_id,
         status: 'PENDING',
-        payment_gateway: 'JOJOUPI'
+        payment_gateway: result.payment_gateway || 'JOJOUPI'
       });
 
       res.json({
@@ -87,18 +98,31 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
-    // Verify payment with JOJOUPI
-    const result = await JOJOUPIService.verifyPayment(order_id);
+    // Find the transaction to determine which gateway was used
+    const transaction = await Transaction.findOne({
+      reference_id: order_id,
+      agent: agent._id
+    });
+
+    if (!transaction) {
+      return res.status(404).json({
+        success: false,
+        message: 'Transaction not found'
+      });
+    }
+
+    let result;
+    // Verify payment based on the gateway used
+    if (transaction.payment_gateway === 'CASHFREE') {
+      result = await CashfreeService.verifyPayment(order_id);
+    } else {
+      // Default to JOJOUPI for backward compatibility
+      result = await JOJOUPIService.verifyPayment(order_id);
+    }
 
     if (result.success) {
       if (result.status === 'SUCCESS') {
-        // Find the pending transaction
-        const transaction = await Transaction.findOne({
-          reference_id: order_id,
-          agent: agent._id
-        });
-
-        if (transaction && transaction.status === 'PENDING') {
+        if (transaction.status === 'PENDING') {
           // Update agent wallet
           const updatedAgent = await Agent.findByIdAndUpdate(
             agent._id,
