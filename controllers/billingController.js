@@ -172,14 +172,22 @@ exports.createTopupOrder = async (req, res) => {
     const paymentData = {
       api_key: settings.jojoUpi.apiKey,
       orderid: orderId,
+      key: settings.jojoUpi.apiKey,
+      client_txn_id: orderId,
       amount: topupAmount.toFixed(2),
       user: req.agent.email || req.agent._id,
       callback_url: settings.jojoUpi.callbackUrl,
+      purpose: `Wallet Top-up for ${req.agent.email}`,
+      customer_name: req.agent.name,
+      customer_email: req.agent.email,
+      customer_mobile: req.agent.mobile,
+      redirect_url: `${process.env.FRONTEND_URL}/billing`, // Or a dedicated success page
+      callback_url: settings.jojoUpi.callbackUrl
     };
 
     // Make request to JojoUPI API
     const axios = require('axios');
-    const response = await axios.post(`${settings.jojoUpi.apiUrl}/create-payment`, paymentData);
+    const response = await axios.post(`${settings.jojoUpi.apiUrl}/api/v1/order`, paymentData);
 
     if (response.data.success) {
       res.json({
