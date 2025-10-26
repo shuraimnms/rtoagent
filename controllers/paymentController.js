@@ -12,11 +12,19 @@ exports.createPaymentLink = async (req, res) => {
     const { amount, purpose } = req.body;
     const agent = req.agent;
 
-    // Validate amount
-    if (!amount || amount < 10) {
+    // Validate amount - must be positive integer >= 10
+    if (!amount || !Number.isInteger(Number(amount)) || amount < 10) {
       return res.status(400).json({
         success: false,
-        message: 'Minimum top-up amount is ₹10'
+        message: 'Amount must be a positive integer with minimum ₹10'
+      });
+    }
+
+    // Validate agent mobile - must be 10 digits
+    if (!agent.mobile || !/^\d{10}$/.test(agent.mobile)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid mobile number. Must be 10 digits.'
       });
     }
 

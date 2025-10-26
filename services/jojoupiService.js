@@ -5,7 +5,7 @@ class JOJOUPIService {
   constructor() {
     this.apiKey = process.env.JOJOUPI_API_KEY || '17f13317ce1ea927ccedb77fa3732b61';
     this.baseURL = process.env.JOJOUPI_BASE_URL || 'https://upi.jojopay.in';
-    this.callbackURL = process.env.JOJOUPI_CALLBACK_URL || 'https://rtoagent.netlify.app/api/v1/webhook/jojoupi';
+    this.callbackURL = process.env.JOJOUPI_CALLBACK_URL || `${process.env.BASE_URL}/api/v1/webhook/jojoupi`;
   }
 
   /**
@@ -18,7 +18,7 @@ class JOJOUPIService {
       const payload = {
         key: this.apiKey,
         client_txn_id: orderId,
-        amount: amount.toString(),
+        amount: Math.round(amount).toString(), // Ensure integer amount
         purpose: purpose,
         customer_name: agent.name,
         customer_email: agent.email,
@@ -52,7 +52,12 @@ class JOJOUPIService {
         };
       }
     } catch (error) {
-      console.error('JOJOUPI Payment Error:', error.response?.data || error.message);
+      console.error('JOJOUPI Payment Error:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message
+      });
       return {
         success: false,
         error: error.response?.data?.message || error.message
