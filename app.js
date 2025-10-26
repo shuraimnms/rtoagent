@@ -35,10 +35,13 @@ app.use(helmet());
 
 // CORS configuration
 app.use(cors({
-  origin: ["https://rtoagent.netlify.app", "http://localhost:3001"],
+  origin: ["https://rtoagent.netlify.app", "http://localhost:3001", "https://rto-reminder-backend.onrender.com"],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  credentials: true
+  credentials: true,
+  preflightContinue: true // Pass the CORS preflight response to the next handler
 }));
+
+app.options('*', cors()); // Enable pre-flight for all routes
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
