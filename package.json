@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "mysql2": "^3.15.3",
+    "razorpay": "^2.9.6",
+    "recharts": "^3.3.0",
+    "redis": "^5.8.3",
+    "sequelize": "^6.37.7"
+  }
+}
