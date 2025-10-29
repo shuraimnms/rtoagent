@@ -4,7 +4,6 @@ const Agent = require('../models/Agent');
 const Transaction = require('../models/Transaction');
 const Invoice = require('../models/Invoice');
 const Settings = require('../models/Settings');
-const JOJOUPIService = require('../services/jojoupiService');
 const CashfreeService = require('../services/cashfreeService');
 
 exports.handleWebhook = async (req, res) => {
@@ -68,64 +67,6 @@ exports.handleInboundMessage = async (data) => {
       },
       { upsert: true, new: true }
     );
-  }
-};
-
-exports.handleJojoUpiWebhook = async (req, res) => {
-  try {
-    const { user, orderid, amount, txn_status, utr_number, received_from, date, api_txn_id, transactions_id } = req.body;
-
-    console.log('JojoUPI Webhook received:', req.body);
-
-    // Find the transaction by order ID
-    const transaction = await Transaction.findOne({ orderId: orderid });
-
-    if (!transaction) {
-      console.log('Transaction not found for order ID:', orderid);
-      return res.status(200).json({ success: false, message: 'Transaction not found' });
-    }
-
-    if (txn_status === 'SUCCESS') {
-      // Update transaction status
-      transaction.status = 'completed';
-      transaction.utrNumber = utr_number;
-      transaction.completedAt = new Date(date);
-      await transaction.save();
-
-      // Update wallet balance
-      const agent = await Agent.findById(transaction.agent);
-      if (agent) {
-        agent.wallet_balance += parseFloat(amount);
-        await agent.save();
-      }
-
-      // Create invoice
-      const invoice = new Invoice({
-        agent: transaction.agent,
-        invoiceNumber: `INV-${Date.now()}`,
-        items: [{
-          description: 'Wallet Top-up',
-          amount: parseFloat(amount),
-          quantity: 1
-        }],
-        totalAmount: parseFloat(amount),
-        status: 'paid',
-        issueDate: new Date(),
-        dueDate: new Date()
-      });
-      await invoice.save();
-
-      console.log('Payment processed successfully for order:', orderid);
-    } else if (txn_status === 'FAILED') {
-      transaction.status = 'failed';
-      await transaction.save();
-      console.log('Payment failed for order:', orderid);
-    }
-
-    res.status(200).json({ success: true });
-  } catch (error) {
-    console.error('JojoUPI Webhook Error:', error);
-    res.status(200).json({ success: false });
   }
 };
 

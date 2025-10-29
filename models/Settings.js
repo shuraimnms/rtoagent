@@ -45,18 +45,7 @@ const settingsSchema = new mongoose.Schema({
       max: 60
     }
   },
-  jojoUpi: {
-    enabled: {
-      type: Boolean,
-      default: true
-    },
-    apiKey: String,
-    apiUrl: {
-      type: String,
-      default: 'https://upi.jojopay.in/partner/auth-login.php'
-    },
-    callbackUrl: String
-  },
+
   cashfree: {
     enabled: {
       type: Boolean,
@@ -73,7 +62,7 @@ const settingsSchema = new mongoose.Schema({
   paymentGateway: {
     primary: {
       type: String,
-      enum: ['cashfree', 'jojoupi'],
+      enum: ['cashfree'],
       default: 'cashfree'
     }
   }

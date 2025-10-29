@@ -111,6 +111,9 @@ const AdminAgentDetail = () => {
                     <td className="px-3 py-4 text-sm text-gray-500">{customer.mobile}</td>
                     <td className="px-3 py-4 text-sm">
                       <button className="text-blue-600 hover:text-blue-900">Edit</button>
+                      <Link to={`/admin/customers/${customer._id}/edit`} className="text-blue-600 hover:text-blue-900">
+                        Edit
+                      </Link>
                     </td>
                   </tr>
                 ))}

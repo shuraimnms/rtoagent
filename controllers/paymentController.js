@@ -1,6 +1,5 @@
 const Agent = require('../models/Agent');
 const Transaction = require('../models/Transaction');
-const JOJOUPIService = require('../services/jojoupiService');
 const CashfreeService = require('../services/cashfreeService');
 
 /**
@@ -21,26 +20,20 @@ exports.createPaymentLink = async (req, res) => {
       });
     }
 
-    // Validate agent mobile - must be 10 digits
-    if (!agent.mobile || !/^\d{10}$/.test(agent.mobile)) {
+    // Validate agent mobile - must be 10 digits (extract from international format if needed)
+    let mobileNumber = agent.mobile;
+    if (mobileNumber.startsWith('+91')) {
+      mobileNumber = mobileNumber.substring(3);
+    }
+    if (!mobileNumber || !/^\d{10}$/.test(mobileNumber)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid mobile number. Must be 10 digits.'
       });
     }
 
-    // Create payment link - use Cashfree as primary, fallback to JOJOUPI
-    let result;
-    try {
-      result = await CashfreeService.createPaymentLink(agent, amount, purpose);
-      if (!result.success) {
-        console.log('Cashfree failed, trying JOJOUPI as fallback');
-        result = await JOJOUPIService.createPaymentLink(agent, amount, purpose);
-      }
-    } catch (error) {
-      console.log('Cashfree error, trying JOJOUPI as fallback:', error.message);
-      result = await JOJOUPIService.createPaymentLink(agent, amount, purpose);
-    }
+    // Create payment link using Cashfree only
+    const result = await CashfreeService.createPaymentLink(agent, amount, purpose);
 
     if (result.success) {
       // Create pending transaction record
@@ -52,7 +45,7 @@ exports.createPaymentLink = async (req, res) => {
         description: `Wallet top-up - ${purpose}`,
         reference_id: result.order_id,
         status: 'PENDING',
-        payment_gateway: result.payment_gateway || 'JOJOUPI'
+        payment_gateway: result.payment_gateway || 'CASHFREE'
       });
 
       res.json({
@@ -111,14 +104,8 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
-    let result;
-    // Verify payment based on the gateway used
-    if (transaction.payment_gateway === 'CASHFREE') {
-      result = await CashfreeService.verifyPayment(order_id);
-    } else {
-      // Default to JOJOUPI for backward compatibility
-      result = await JOJOUPIService.verifyPayment(order_id);
-    }
+    // Verify payment using Cashfree only
+    const result = await CashfreeService.verifyPayment(order_id);
 
     if (result.success) {
       if (result.status === 'SUCCESS') {
@@ -180,90 +167,7 @@ exports.verifyPayment = async (req, res) => {
   }
 };
 
-/**
- * @desc    JOJOUPI webhook handler
- * @route   POST /api/v1/webhook/jojoupi
- * @access  Public
- */
-exports.handleWebhook = async (req, res) => {
-  try {
-    console.log('JOJOUPI Webhook Received:', req.body);
 
-    // Process webhook
-    const webhookData = await JOJOUPIService.handleWebhook(req.body);
-
-    if (!webhookData.success) {
-      return res.status(400).json({
-        success: false,
-        message: webhookData.error
-      });
-    }
-
-    const { agentId, orderId, amount, status, utr } = webhookData;
-
-    // Find the pending transaction
-    const transaction = await Transaction.findOne({
-      reference_id: orderId,
-      agent: agentId
-    });
-
-    if (!transaction) {
-      console.error('Transaction not found for order:', orderId);
-      return res.status(404).json({
-        success: false,
-        message: 'Transaction not found'
-      });
-    }
-
-    if (transaction.status !== 'PENDING') {
-      console.log('Transaction already processed:', orderId);
-      return res.json({
-        success: true,
-        message: 'Transaction already processed'
-      });
-    }
-
-    if (status === 'SUCCESS') {
-      // Update agent wallet
-      const agent = await Agent.findById(agentId);
-      const newBalance = agent.wallet_balance + amount;
-
-      await Agent.findByIdAndUpdate(agentId, {
-        wallet_balance: newBalance
-      });
-
-      // Update transaction
-      transaction.status = 'COMPLETED';
-      transaction.balance_after = newBalance;
-      transaction.payment_gateway_response = req.body;
-      await transaction.save();
-
-      console.log(`Wallet top-up successful for agent ${agentId}. Amount: ${amount}, New Balance: ${newBalance}`);
-
-    } else if (status === 'FAILED') {
-      // Mark transaction as failed
-      transaction.status = 'FAILED';
-      transaction.payment_gateway_response = req.body;
-      await transaction.save();
-
-      console.log(`Wallet top-up failed for agent ${agentId}. Amount: ${amount}`);
-    }
-
-    // Always return success to JOJOUPI
-    res.json({
-      success: true,
-      message: 'Webhook processed successfully'
-    });
-
-  } catch (error) {
-    console.error('Webhook processing error:', error);
-    // Still return success to JOJOUPI to prevent retries
-    res.json({
-      success: true,
-      message: 'Webhook received'
-    });
-  }
-};
 
 /**
  * @desc    Get payment history
