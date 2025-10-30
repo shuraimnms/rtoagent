@@ -4,11 +4,11 @@ const settingsSchema = new mongoose.Schema({
   msg91: {
     authKey: {
       type: String,
-      required: true
+      default: ''
     },
     senderId: {
       type: String,
-      required: true
+      default: ''
     },
     flows: {
       drivingLicense: String,
@@ -45,7 +45,63 @@ const settingsSchema = new mongoose.Schema({
       max: 60
     }
   },
-
+  wallet: {
+    min_topup_amount: {
+      type: Number,
+      default: 10,
+      min: 1
+    },
+    max_topup_amount: {
+      type: Number,
+      default: 10000,
+      min: 1
+    },
+    topup_amounts: {
+      type: [Number],
+      default: [100, 500, 1000, 2000, 5000]
+    },
+    auto_topup_enabled: {
+      type: Boolean,
+      default: false
+    },
+    auto_topup_threshold: {
+      type: Number,
+      default: 50,
+      min: 0
+    },
+    auto_topup_amount: {
+      type: Number,
+      default: 500,
+      min: 1
+    },
+    daily_topup_limit: {
+      type: Number,
+      default: 5000,
+      min: 0
+    },
+    monthly_topup_limit: {
+      type: Number,
+      default: 25000,
+      min: 0
+    }
+  },
+  razorpay: {
+    keyId: String,
+    keySecret: String,
+    isProduction: {
+      type: Boolean,
+      default: false
+    }
+  },
+  jojoUpi: {
+    apiKey: String,
+    apiUrl: String,
+    callbackUrl: String,
+    enabled: {
+      type: Boolean,
+      default: true
+    }
+  },
   cashfree: {
     enabled: {
       type: Boolean,
@@ -62,7 +118,7 @@ const settingsSchema = new mongoose.Schema({
   paymentGateway: {
     primary: {
       type: String,
-      enum: ['cashfree'],
+      enum: ['cashfree', 'razorpay', 'jojoUpi'],
       default: 'cashfree'
     }
   }

@@ -2,96 +2,48 @@ const Agent = require('../models/Agent');
 const Customer = require('../models/Customer');
 const Reminder = require('../models/Reminder');
 const MessageLog = require('../models/MessageLog');
-const Transaction = require('../models/Transaction');
 const Settings = require('../models/Settings');
 const AuditLog = require('../models/AuditLog');
+const Transaction = require('../models/Transaction');
+const FraudAlert = require('../models/FraudAlert');
+const SupportTicket = require('../models/SupportTicket');
 
-// Get all agents with stats
+// Agent Management Functions
 exports.getAllAgents = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    const agents = await Agent.find()
+    let query = {};
+
+    // Add filters
+    if (req.query.search) {
+      query.$or = [
+        { name: { $regex: req.query.search, $options: 'i' } },
+        { email: { $regex: req.query.search, $options: 'i' } },
+        { mobile: { $regex: req.query.search, $options: 'i' } }
+      ];
+    }
+
+    const agents = await Agent.find(query)
       .select('-password')
       .skip(skip)
       .limit(limit)
       .sort({ createdAt: -1 });
 
-    // Get stats for each agent
-    const agentsWithStats = await Promise.all(
-      agents.map(async (agent) => {
-        const [customerCount, reminderCount, messageCount, totalSpent] = await Promise.all([
-          Customer.countDocuments({ created_by_agent: agent._id }),
-          Reminder.countDocuments({ agent: agent._id }),
-          MessageLog.countDocuments({ agent: agent._id }),
-          Transaction.aggregate([
-            { $match: { agent: agent._id, type: 'message_deduction' } },
-            { $group: { _id: null, total: { $sum: '$amount' } } }
-          ])
-        ]);
-
-        return {
-          ...agent.toObject(),
-          stats: {
-            customers: customerCount,
-            reminders: reminderCount,
-            messages: messageCount,
-            totalSpent: totalSpent[0]?.total || 0
-          }
-        };
-      })
-    );
-
-    const total = await Agent.countDocuments();
-    const pagination = {
-      page,
-      limit,
-      total,
-      pages: Math.ceil(total / limit)
-    };
-
-    res.json({
-      success: true,
-      data: { agents: agentsWithStats, pagination },
-      pagination: pagination
-    });
-  } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: error.message
-    });
-  }
-};
-
-// Get agent details with full data
-exports.getAgentDetails = async (req, res) => {
-  try {
-    const agent = await Agent.findById(req.params.id).select('-password');
-    if (!agent) {
-      return res.status(404).json({
-        success: false,
-        message: 'Agent not found'
-      });
-    }
-
-    // Get all related data
-    const [customers, reminders, messages, transactions] = await Promise.all([
-      Customer.find({ created_by_agent: agent._id }).sort({ createdAt: -1 }),
-      Reminder.find({ agent: agent._id }).populate('customer').sort({ createdAt: -1 }),
-      MessageLog.find({ agent: agent._id }).populate('reminder').sort({ createdAt: -1 }),
-      Transaction.find({ agent: agent._id }).sort({ createdAt: -1 })
-    ]);
+    const total = await Agent.countDocuments(query);
 
     res.json({
       success: true,
       data: {
-        agent,
-        customers,
-        reminders,
-        messages,
-        transactions
+        agents,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit)
+        }
       }
     });
   } catch (error) {
@@ -102,16 +54,39 @@ exports.getAgentDetails = async (req, res) => {
   }
 };
 
-// Create new agent
 exports.createAgent = async (req, res) => {
   try {
-    const agent = await Agent.create(req.body);
-    const agentResponse = agent.toObject();
-    delete agentResponse.password;
+    const { name, email, mobile, password } = req.body;
+
+    // Check if agent already exists
+    const existingAgent = await Agent.findOne({ $or: [{ email }, { mobile }] });
+    if (existingAgent) {
+      return res.status(400).json({
+        success: false,
+        message: 'Agent with this email or mobile already exists'
+      });
+    }
+
+    const agent = await Agent.create({
+      name,
+      email,
+      mobile,
+      password,
+      role: 'agent'
+    });
 
     res.status(201).json({
       success: true,
-      data: { agent: agentResponse }
+      data: {
+        agent: {
+          id: agent._id,
+          name: agent.name,
+          email: agent.email,
+          mobile: agent.mobile,
+          wallet_balance: agent.wallet_balance,
+          createdAt: agent.createdAt
+        }
+      }
     });
   } catch (error) {
     res.status(400).json({
@@ -121,7 +96,28 @@ exports.createAgent = async (req, res) => {
   }
 };
 
-// Update agent
+exports.getAgentDetails = async (req, res) => {
+  try {
+    const agent = await Agent.findById(req.params.id).select('-password');
+    if (!agent) {
+      return res.status(404).json({
+        success: false,
+        message: 'Agent not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: { agent }
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
 exports.updateAgent = async (req, res) => {
   try {
     const agent = await Agent.findByIdAndUpdate(
@@ -146,6 +142,169 @@ exports.updateAgent = async (req, res) => {
       success: false,
       message: error.message
     });
+  }
+};
+
+// Advanced Analytics Functions
+exports.getAdvancedAnalytics = async (req, res) => {
+  try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+
+    // User growth trends (agents and customers)
+    const agentGrowth = await Agent.aggregate([
+      { $match: { createdAt: { $gte: ninetyDaysAgo } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    const customerGrowth = await Customer.aggregate([
+      { $match: { createdAt: { $gte: ninetyDaysAgo } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    // Revenue projections (simple linear trend)
+    const revenueHistory = await Transaction.aggregate([
+      { $match: { createdAt: { $gte: ninetyDaysAgo }, type: 'topup' } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          revenue: { $sum: '$amount' }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    // Customer acquisition metrics
+    const customerAcquisition = await Customer.aggregate([
+      { $match: { createdAt: { $gte: ninetyDaysAgo } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        agentGrowth,
+        customerGrowth,
+        revenueHistory,
+        customerAcquisition
+      }
+    });
+  } catch (error) {
+    console.error('Advanced analytics error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch advanced analytics' });
+  }
+};
+
+// System Performance Monitoring
+exports.getSystemPerformance = async (req, res) => {
+  try {
+    const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    // API response times (simulated - in real app, you'd track this)
+    const apiResponseTimes = {
+      average: 245, // ms
+      p95: 450,
+      p99: 800,
+      trend: 'stable'
+    };
+
+    // Error rates
+    const totalMessages = await MessageLog.countDocuments({ createdAt: { $gte: last24Hours } });
+    const failedMessages = await MessageLog.countDocuments({
+      createdAt: { $gte: last24Hours },
+      status: { $in: ['FAILED', 'ERROR'] }
+    });
+    const errorRate = totalMessages > 0 ? (failedMessages / totalMessages) * 100 : 0;
+
+    // Service uptime (simulated)
+    const uptime = {
+      overall: 99.8,
+      last24h: 100,
+      last7d: 99.9,
+      last30d: 99.8
+    };
+
+    // Active services status
+    const services = [
+      { name: 'MSG91 Service', status: 'operational', uptime: 99.9 },
+      { name: 'Database', status: 'operational', uptime: 99.95 },
+      { name: 'Payment Gateway', status: 'operational', uptime: 99.7 },
+      { name: 'Scheduler', status: 'operational', uptime: 100 }
+    ];
+
+    res.json({
+      success: true,
+      data: {
+        apiResponseTimes,
+        errorRate,
+        uptime,
+        services
+      }
+    });
+  } catch (error) {
+    console.error('System performance error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch system performance data' });
+  }
+};
+
+// Security Insights
+exports.getSecurityInsights = async (req, res) => {
+  try {
+    const last7Days = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    // Failed login attempts (simulated - would need auth logs)
+    const failedLogins = await AuditLog.countDocuments({
+      action: 'LOGIN_FAILED',
+      timestamp: { $gte: last7Days }
+    });
+
+    // Suspicious activities
+    const suspiciousActivities = await FraudAlert.countDocuments({
+      createdAt: { $gte: last7Days },
+      status: 'active'
+    });
+
+    // Security alerts
+    const securityAlerts = await AuditLog.find({
+      action: { $in: ['UNAUTHORIZED_ACCESS', 'SUSPICIOUS_ACTIVITY', 'SECURITY_BREACH'] },
+      timestamp: { $gte: last7Days }
+    }).sort({ timestamp: -1 }).limit(10);
+
+    res.json({
+      success: true,
+      data: {
+        failedLogins,
+        suspiciousActivities,
+        securityAlerts: securityAlerts.map(alert => ({
+          id: alert._id,
+          type: alert.action,
+          description: alert.details || 'Security event detected',
+          timestamp: alert.timestamp,
+          severity: alert.severity || 'medium'
+        }))
+      }
+    });
+  } catch (error) {
+    console.error('Security insights error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch security insights' });
   }
 };
 
@@ -520,7 +679,7 @@ exports.getAllTransactions = async (req, res) => {
 // Update global settings (MSG91 keys, pricing, etc.)
 exports.updateGlobalSettings = async (req, res) => {
   try {
-    const { msg91, pricing, system, razorpay, cashfree, paymentGateway } = req.body;
+    const { msg91, pricing, system, razorpay, cashfree, paymentGateway, wallet } = req.body;
 
     // Find existing settings or create new ones
     let settings = await Settings.findOne();
@@ -531,9 +690,9 @@ exports.updateGlobalSettings = async (req, res) => {
     // Update MSG91 settings
     if (msg91) {
       settings.msg91 = {
-        authKey: msg91.authKey,
-        senderId: msg91.senderId,
-        flows: msg91.flows
+        authKey: msg91.authKey || settings.msg91?.authKey || '',
+        senderId: msg91.senderId || settings.msg91?.senderId || '',
+        flows: msg91.flows || settings.msg91?.flows || {}
       };
     }
 
@@ -548,6 +707,27 @@ exports.updateGlobalSettings = async (req, res) => {
         $set: {
           'settings.per_message_cost': pricing.perMessageCost,
           'settings.currency': pricing.currency || 'INR'
+        }
+      });
+    }
+
+    // Update wallet settings
+    if (wallet) {
+      settings.wallet = {
+        min_topup_amount: req.body.wallet.min_topup_amount || 10,
+        max_topup_amount: req.body.wallet.max_topup_amount || 10000,
+        topup_amounts: req.body.wallet.topup_amounts || [100, 500, 1000, 2000, 5000],
+        auto_topup_enabled: req.body.wallet.auto_topup_enabled || false,
+        auto_topup_threshold: req.body.wallet.auto_topup_threshold || 50,
+        auto_topup_amount: req.body.wallet.auto_topup_amount || 500,
+        daily_topup_limit: req.body.wallet.daily_topup_limit || 5000,
+        monthly_topup_limit: req.body.wallet.monthly_topup_limit || 25000
+      };
+
+      // Update all agents' wallet settings
+      await Agent.updateMany({}, {
+        $set: {
+          'settings.wallet': settings.wallet
         }
       });
     }

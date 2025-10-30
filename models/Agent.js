@@ -79,6 +79,40 @@ const agentSchema = new mongoose.Schema({
         type: Number,
         default: 24
       }
+    },
+    wallet: {
+      min_topup_amount: {
+        type: Number,
+        default: 10
+      },
+      max_topup_amount: {
+        type: Number,
+        default: 10000
+      },
+      topup_amounts: {
+        type: [Number],
+        default: [100, 500, 1000, 2000, 5000]
+      },
+      auto_topup_enabled: {
+        type: Boolean,
+        default: false
+      },
+      auto_topup_threshold: {
+        type: Number,
+        default: 50
+      },
+      auto_topup_amount: {
+        type: Number,
+        default: 500
+      },
+      daily_topup_limit: {
+        type: Number,
+        default: 5000
+      },
+      monthly_topup_limit: {
+        type: Number,
+        default: 25000
+      }
     }
   }
 }, {

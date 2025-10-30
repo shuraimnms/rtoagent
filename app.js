@@ -13,8 +13,7 @@ const authRoutes = require('./routes/auth');
 const customerRoutes = require('./routes/customers');
 const reminderRoutes = require('./routes/reminders');
 const messageRoutes = require('./routes/messages');
-const billingRoutes = require('./routes/billing');
-const paymentRoutes = require('./routes/payment');
+
 const settingsRoutes = require('./routes/settings');
 const adminRoutes = require('./routes/admin');
 const importRoutes = require('./routes/import');
@@ -24,6 +23,7 @@ const rtoRoutes = require('./routes/rto');
 const auditRoutes = require('./routes/audit');
 const supportRoutes = require('./routes/support');
 const chatbotRoutes = require('./routes/chatbot'); // Ensure this is correctly imported
+const payRoutes = require('./routes/pay');
 
 // Import services
 const schedulerService = require('./services/schedulerService');
@@ -67,8 +67,7 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/customers', customerRoutes);
 app.use('/api/v1/reminders', reminderRoutes);
 app.use('/api/v1/messages', messageRoutes);
-app.use('/api/v1/billing', billingRoutes);
-app.use('/api/v1/payment', paymentRoutes);
+
 app.use('/api/v1/settings', settingsRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/import', importRoutes);
@@ -77,7 +76,7 @@ app.use('/api/v1/rto', rtoRoutes);
 app.use('/api/v1/audit', auditRoutes);
 app.use('/api/v1/support', supportRoutes);
 app.use('/api/v1/chatbot', chatbotRoutes); // Ensure this is correctly used
-app.use('/webhook', webhookRoutes);
+app.use('/api/v1/pay', payRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

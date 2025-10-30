@@ -8,7 +8,7 @@ const transactionSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['topup', 'message_deduction', 'refund', 'transaction_fee', 'gst'],
+    enum: ['topup', 'message_deduction', 'refund', 'adjustment'],
     required: true
   },
   amount: {
@@ -19,12 +19,25 @@ const transactionSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
-  description: String,
-  reference_id: String,
-  payment_gateway_response: mongoose.Schema.Types.Mixed
+  description: {
+    type: String,
+    required: true
+  },
+  transaction_id: {
+    type: String,
+    default: null
+  },
+  payment_gateway: {
+    type: String,
+    enum: ['cashfree', 'razorpay', 'jojoUpi', 'manual'],
+    default: 'manual'
+  }
 }, {
   timestamps: true
 });
 
-// Fix: Check if model already exists before creating
-module.exports = mongoose.models.Transaction || mongoose.model('Transaction', transactionSchema);
+// Index for efficient queries
+transactionSchema.index({ agent: 1, createdAt: -1 });
+transactionSchema.index({ type: 1, createdAt: -1 });
+
+module.exports = mongoose.model('Transaction', transactionSchema);
