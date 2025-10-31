@@ -118,7 +118,7 @@ const settingsSchema = new mongoose.Schema({
   paymentGateway: {
     primary: {
       type: String,
-      enum: ['cashfree', 'razorpay', 'jojoUpi'],
+      enum: ['cashfree', 'razorpay', 'jojoUpi', 'jojoupi'],
       default: 'cashfree'
     }
   }

@@ -15,7 +15,4 @@ router.get('/balance', payController.getBalance);
 // Get transaction history
 router.get('/history', payController.getTransactionHistory);
 
-// Verify payment
-router.get('/verify-payment/:transactionId', payController.verifyPayment);
-
 module.exports = router;

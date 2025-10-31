@@ -1,5 +1,6 @@
 const Agent = require('../models/Agent');
 const Transaction = require('../models/Transaction');
+const Settings = require('../models/Settings');
 
 /**
  * @desc    Simple pay button functionality - directly update wallet balance
@@ -19,10 +20,15 @@ exports.addBalance = async (req, res) => {
       });
     }
 
-    // Get agent settings for validation
-    const agentData = await Agent.findById(agent._id);
-    const minAmount = agentData.settings.wallet.min_topup_amount;
-    const maxAmount = agentData.settings.wallet.max_topup_amount;
+    // Get global settings for validation
+    let globalSettings = await Settings.findOne();
+    let minAmount = 10; // default
+    let maxAmount = 10000; // default
+
+    if (globalSettings && globalSettings.wallet) {
+      minAmount = globalSettings.wallet.min_topup_amount || 10;
+      maxAmount = globalSettings.wallet.max_topup_amount || 10000;
+    }
 
     // Validate against admin settings
     if (amount < minAmount) {
@@ -80,10 +86,11 @@ exports.addBalance = async (req, res) => {
  */
 exports.getBalance = async (req, res) => {
   try {
-    const agent = await Agent.findById(req.agent._id).select('wallet_balance settings.wallet');
+    const agent = await Agent.findById(req.agent._id).select('wallet_balance');
 
-    // If wallet settings don't exist, use defaults
-    const walletSettings = agent.settings?.wallet || {
+    // Get global wallet settings
+    let globalSettings = await Settings.findOne();
+    let walletSettings = {
       min_topup_amount: 10,
       max_topup_amount: 10000,
       topup_amounts: [100, 500, 1000, 2000, 5000],
@@ -91,6 +98,17 @@ exports.getBalance = async (req, res) => {
       auto_topup_threshold: 50,
       auto_topup_amount: 500
     };
+
+    if (globalSettings && globalSettings.wallet) {
+      walletSettings = {
+        min_topup_amount: globalSettings.wallet.min_topup_amount || 10,
+        max_topup_amount: globalSettings.wallet.max_topup_amount || 10000,
+        topup_amounts: globalSettings.wallet.topup_amounts || [100, 500, 1000, 2000, 5000],
+        auto_topup_enabled: globalSettings.wallet.auto_topup_enabled || false,
+        auto_topup_threshold: globalSettings.wallet.auto_topup_threshold || 50,
+        auto_topup_amount: globalSettings.wallet.auto_topup_amount || 500
+      };
+    }
 
     res.json({
       success: true,
@@ -138,73 +156,6 @@ exports.getTransactionHistory = async (req, res) => {
 
   } catch (error) {
     console.error('Get transaction history error:', error);
-    res.status(400).json({
-      success: false,
-      message: error.message
-    });
-  }
-};
-
-/**
- * @desc    Verify payment
- * @route   GET /api/v1/pay/verify-payment/:transactionId
- * @access  Private
- */
-exports.verifyPayment = async (req, res) => {
-  try {
-    const { transactionId } = req.params;
-    const agent = req.agent;
-
-    // Find transaction
-    const transaction = await Transaction.findOne({
-      transaction_id: transactionId,
-      agent: agent._id
-    });
-
-    if (!transaction) {
-      return res.status(404).json({
-        success: false,
-        message: 'Transaction not found'
-      });
-    }
-
-    // If already processed, return success
-    if (transaction.type === 'topup') {
-      return res.json({
-        success: true,
-        data: {
-          amount: transaction.amount,
-          transaction_id: transaction.transaction_id,
-          status: 'success'
-        }
-      });
-    }
-
-    // For simplicity, assume payment is successful and update balance
-    // In real implementation, verify with payment gateway
-    const updatedAgent = await Agent.findByIdAndUpdate(
-      agent._id,
-      { $inc: { wallet_balance: transaction.amount } },
-      { new: true }
-    );
-
-    // Update transaction
-    transaction.type = 'topup';
-    transaction.balance_after = updatedAgent.wallet_balance;
-    await transaction.save();
-
-    res.json({
-      success: true,
-      data: {
-        amount: transaction.amount,
-        transaction_id: transaction.transaction_id,
-        payment_id: transaction.transaction_id,
-        status: 'success'
-      }
-    });
-
-  } catch (error) {
-    console.error('Verify payment error:', error);
     res.status(400).json({
       success: false,
       message: error.message

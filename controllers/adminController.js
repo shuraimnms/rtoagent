@@ -46,6 +46,7 @@ exports.getAllAgents = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('Get all agents error:', error);
     res.status(400).json({
       success: false,
       message: error.message
@@ -678,12 +679,47 @@ exports.getAllTransactions = async (req, res) => {
 // Update global settings (MSG91 keys, pricing, etc.)
 exports.updateGlobalSettings = async (req, res) => {
   try {
-    const { msg91, pricing, system, razorpay, cashfree, paymentGateway, wallet } = req.body;
+    console.log('=== Update Global Settings Request ===');
+    console.log('Request Body:', JSON.stringify(req.body, null, 2));
+    
+    const { msg91, pricing, system, wallet } = req.body;
 
     // Find existing settings or create new ones
     let settings = await Settings.findOne();
     if (!settings) {
+      console.log('No existing settings found, creating new one');
       settings = new Settings();
+    }
+
+    // Validate wallet settings if provided
+    if (wallet) {
+      const validationErrors = [];
+      const fieldsToValidate = [
+        'min_topup_amount', 'max_topup_amount', 'daily_topup_limit',
+        'monthly_topup_limit', 'auto_topup_threshold', 'auto_topup_amount'
+      ];
+
+      fieldsToValidate.forEach(field => {
+        if (wallet[field] !== undefined && wallet[field] !== null) {
+          if (typeof wallet[field] !== 'number' || isNaN(wallet[field]) || wallet[field] < 0) {
+            validationErrors.push(`${field.replace(/_/g, ' ')} must be a valid non-negative number.`);
+          }
+        }
+      });
+
+      const min = wallet.min_topup_amount;
+      const max = wallet.max_topup_amount;
+      if (min !== undefined && min !== null && max !== undefined && max !== null && min > max) {
+        validationErrors.push('Minimum top-up amount cannot be greater than maximum top-up amount.');
+      }
+
+      if (validationErrors.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Wallet settings validation failed.',
+          errors: validationErrors
+        });
+      }
     }
 
     // Update MSG91 settings
@@ -697,6 +733,12 @@ exports.updateGlobalSettings = async (req, res) => {
 
     // Update pricing settings
     if (pricing) {
+      if (pricing.perMessageCost !== undefined && (typeof pricing.perMessageCost !== 'number' || pricing.perMessageCost < 0)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Per message cost must be a valid non-negative number.'
+        });
+      }
       settings.pricing = {
         perMessageCost: pricing.perMessageCost,
         currency: pricing.currency || 'INR'
@@ -713,14 +755,14 @@ exports.updateGlobalSettings = async (req, res) => {
     // Update wallet settings
     if (wallet) {
       settings.wallet = {
-        min_topup_amount: req.body.wallet.min_topup_amount || 10,
-        max_topup_amount: req.body.wallet.max_topup_amount || 10000,
-        topup_amounts: req.body.wallet.topup_amounts || [100, 500, 1000, 2000, 5000],
-        auto_topup_enabled: req.body.wallet.auto_topup_enabled || false,
-        auto_topup_threshold: req.body.wallet.auto_topup_threshold || 50,
-        auto_topup_amount: req.body.wallet.auto_topup_amount || 500,
-        daily_topup_limit: req.body.wallet.daily_topup_limit || 5000,
-        monthly_topup_limit: req.body.wallet.monthly_topup_limit || 25000
+        min_topup_amount: wallet.min_topup_amount ?? 10,
+        max_topup_amount: wallet.max_topup_amount ?? 10000,
+        topup_amounts: wallet.topup_amounts ?? [100, 500, 1000, 2000, 5000],
+        auto_topup_enabled: wallet.auto_topup_enabled ?? false,
+        auto_topup_threshold: wallet.auto_topup_threshold ?? 50,
+        auto_topup_amount: wallet.auto_topup_amount ?? 500,
+        daily_topup_limit: wallet.daily_topup_limit ?? 5000,
+        monthly_topup_limit: wallet.monthly_topup_limit ?? 25000
       };
 
       // Update all agents' wallet settings
@@ -739,46 +781,31 @@ exports.updateGlobalSettings = async (req, res) => {
       };
     }
 
-
-
-    // Update JojoUPI settings
-    if (req.body.jojoUpi) {
-      settings.jojoUpi = {
-        apiKey: req.body.jojoUpi.apiKey,
-        apiUrl: req.body.jojoUpi.apiUrl,
-        callbackUrl: req.body.jojoUpi.callbackUrl,
-        enabled: req.body.jojoUpi.enabled !== undefined ? req.body.jojoUpi.enabled : settings.jojoUpi?.enabled || true,
-      };
-    }
-
-    // Update Cashfree settings
-    if (req.body.cashfree) {
-      settings.cashfree = {
-        appId: req.body.cashfree.appId,
-        secretKey: req.body.cashfree.secretKey,
-        baseUrl: req.body.cashfree.baseUrl,
-        callbackUrl: req.body.cashfree.callbackUrl,
-        enabled: req.body.cashfree.enabled !== undefined ? req.body.cashfree.enabled : settings.cashfree?.enabled || true,
-      };
-    }
-
-    // Update payment gateway settings
-    if (req.body.paymentGateway) {
-      settings.paymentGateway = {
-        primary: req.body.paymentGateway.primary || settings.paymentGateway?.primary || 'cashfree',
-      };
-    }
-
-    await settings.save();
+        await settings.save();
+    console.log('Settings saved successfully');
 
     res.json({
       success: true,
-      message: 'Global settings updated successfully'
+      message: 'Global settings updated successfully',
+      data: settings
     });
   } catch (error) {
+    console.error('Error updating global settings:', error);
+    console.error('Error stack:', error.stack);
+    
+    // Check if it's a validation error
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(e => e.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors
+      });
+    }
+    
     res.status(400).json({
       success: false,
-      message: error.message
+      message: error.message || 'Failed to update settings'
     });
   }
 };
@@ -810,11 +837,6 @@ exports.getGlobalSettings = async (req, res) => {
         system: {
           maxRetries: 3,
           schedulerInterval: 5
-        },
-        razorpay: {
-          keyId: process.env.RAZORPAY_KEY_ID || '',
-          keySecret: process.env.RAZORPAY_KEY_SECRET || '',
-          isProduction: process.env.NODE_ENV === 'production'
         }
       });
       await settings.save();
