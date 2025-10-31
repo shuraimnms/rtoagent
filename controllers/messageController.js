@@ -19,6 +19,17 @@ exports.getMessageLogs = async (req, res) => {
     if (req.query.status) filterConditions.status = req.query.status;
     if (req.query.message_type) filterConditions.message_type = req.query.message_type;
 
+    // Search filter - search in customer name, mobile, or template name
+    if (req.query.search) {
+      const searchRegex = new RegExp(req.query.search, 'i');
+      filterConditions.$or = [
+        { customer_mobile: searchRegex },
+        { template_name: searchRegex },
+        { 'reminder.customer.name': searchRegex },
+        { 'reminder.customer.mobile': searchRegex }
+      ];
+    }
+
     // Date range filters
     if (req.query.date_from || req.query.date_to) {
       filterConditions.sent_at = {};
@@ -27,16 +38,30 @@ exports.getMessageLogs = async (req, res) => {
     }
 
     const messageLogs = await MessageLog.find(filterConditions)
-      .populate('reminder', 'reminder_type vehicle_number')
+      .populate({
+        path: 'reminder',
+        populate: {
+          path: 'customer',
+          select: 'name mobile'
+        },
+        select: 'reminder_type vehicle_number customer'
+      })
       .sort({ sent_at: -1 })
       .skip(skip)
       .limit(limit);
+
+    // Transform the data to include customer info at the top level
+    const transformedLogs = messageLogs.map(log => ({
+      ...log.toObject(),
+      customer_name: log.reminder?.customer?.name || 'Unknown Customer',
+      customer_mobile: log.reminder?.customer?.mobile || log.customer_mobile
+    }));
 
     const total = await MessageLog.countDocuments(filterConditions);
 
     res.json({
       success: true,
-      data: { messageLogs },
+      data: { messageLogs: transformedLogs },
       pagination: {
         page,
         limit,

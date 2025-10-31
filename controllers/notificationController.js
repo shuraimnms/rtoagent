@@ -259,6 +259,36 @@ const getNotificationStats = async (req, res) => {
   }
 };
 
+// Clear all notifications for the agent
+const clearAllNotifications = async (req, res) => {
+  try {
+    const agentId = req.agent._id;
+
+    const result = await Notification.updateMany(
+      {
+        isActive: true,
+        $or: [
+          { target: 'all' },
+          { target: 'specific', agentId: agentId }
+        ]
+      },
+      { isActive: false }
+    );
+
+    res.json({
+      success: true,
+      message: `${result.modifiedCount} notifications cleared`
+    });
+
+  } catch (error) {
+    console.error('Error clearing notifications:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to clear notifications'
+    });
+  }
+};
+
 // Delete notification (admin only)
 const deleteNotification = async (req, res) => {
   try {
@@ -297,5 +327,6 @@ module.exports = {
   markAsRead,
   markAllAsRead,
   getNotificationStats,
-  deleteNotification
+  deleteNotification,
+  clearAllNotifications
 };

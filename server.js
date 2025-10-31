@@ -5,23 +5,24 @@ const rateLimit = require('express-rate-limit');
 const morgan = require('morgan');
 require('dotenv').config();
 
-const { testConnection } = require('./src/config/database');
-const { redisClient } = require('./src/config/redis');
+const { testConnection } = require('./config/database');
+const { redisClient } = require('./config/redis');
 
 // Import all routes
-const authRoutes = require('./src/routes/auth');
-const agentRoutes = require('./src/routes/agents');
-const customerRoutes = require('./src/routes/customers');
-const reminderRoutes = require('./src/routes/reminders');
-const messageRoutes = require('./src/routes/messages');
-const billingRoutes = require('./src/routes/billing');
-const webhookRoutes = require('./src/routes/webhooks');
-const settingsRoutes = require('./src/routes/settings');
+const authRoutes = require('./routes/auth');
+const adminRoutes = require('./routes/admin');
+const customerRoutes = require('./routes/customers');
+const reminderRoutes = require('./routes/reminders');
+const messageRoutes = require('./routes/messages');
+const payRoutes = require('./routes/pay');
+const webhookRoutes = require('./routes/webhook');
+const settingsRoutes = require('./routes/settings');
 const notificationRoutes = require('./routes/notifications');
-const assistantRoutes = require('./routes/assistant');
+const chatbotRoutes = require('./routes/chatbot');
+const supportRoutes = require('./routes/support');
+const rtoRoutes = require('./routes/rto');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
 const PORT = process.env.PORT || 3000;
 
 // Security middleware
@@ -68,15 +69,17 @@ app.get('/health', (req, res) => {
 
 // API routes
 app.use('/api/v1/auth', authRoutes);
-app.use('/api/v1/agents', agentRoutes);
+app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/customers', customerRoutes);
 app.use('/api/v1/reminders', reminderRoutes);
 app.use('/api/v1/messages', messageRoutes);
-app.use('/api/v1/billing', billingRoutes);
+app.use('/api/v1/pay', payRoutes);
 app.use('/api/v1/webhooks', webhookRoutes);
 app.use('/api/v1/settings', settingsRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
-app.use('/api/v1/assistant', assistantRoutes);
+app.use('/api/v1/chatbot', chatbotRoutes);
+app.use('/api/v1/support', supportRoutes);
+app.use('/api/v1/rto', rtoRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
@@ -87,7 +90,7 @@ app.use('*', (req, res) => {
 });
 
 // Use centralized global error handler (returns JSON consistently)
-const { globalErrorHandler } = require('./src/middleware/error');
+const { globalErrorHandler } = require('./middleware/error');
 app.use(globalErrorHandler);
 
 // Start server
@@ -105,8 +108,8 @@ const startServer = async () => {
     await redisClient.connect();
     
     // Start workers
-    require('./src/workers/messageWorker');
-    require('./src/workers/schedulerWorker');
+    // require('./src/workers/messageWorker');
+    // require('./src/workers/schedulerWorker');
     
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);

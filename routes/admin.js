@@ -1,16 +1,19 @@
 const express = require('express');
 const router = express.Router();
-const {
-  getAllTickets,
-  updateTicket,
-  getTicketById
-} = require('../controllers/supportController');
 const adminController = require('../controllers/adminController'); // Keep this for other admin routes
 const { protect, authorize } = require('../middleware/auth');
 
-// All admin routes require super_admin role
+// All admin routes require admin or super_admin role
 router.use(protect);
-router.use(authorize('super_admin'));
+router.use((req, res, next) => {
+  if (req.agent.role !== 'admin' && req.agent.role !== 'super_admin') {
+    return res.status(403).json({
+      success: false,
+      message: `Role ${req.agent.role} is not authorized to access this resource`
+    });
+  }
+  next();
+});
 
 // Dashboard stats (deprecated - keeping for backward compatibility)
 router.get('/dashboard', adminController.getDashboardStats);
@@ -41,10 +44,7 @@ router.get('/messages', adminController.getAllMessages);
 router.get('/transactions', adminController.getAllTransactions);
 router.get('/messages/export', adminController.exportMessages);
 
-// Support Ticket Management
-router.get('/support/tickets', getAllTickets);
-router.get('/support/tickets/:id', getTicketById);
-router.put('/support/tickets/:id', updateTicket);
+
 
 // Reset functionality
 router.post('/reset/wallet-usage', adminController.resetWalletUsage);

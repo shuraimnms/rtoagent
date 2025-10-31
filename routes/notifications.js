@@ -7,6 +7,7 @@ const { protect, authorize } = require('../middleware/auth');
 router.get('/', protect, notificationController.getNotifications);
 router.put('/:notificationId/read', protect, notificationController.markAsRead);
 router.put('/mark-all-read', protect, notificationController.markAllAsRead);
+router.delete('/clear-all', protect, notificationController.clearAllNotifications);
 
 // Admin routes
 router.post('/send', protect, authorize('super_admin'), notificationController.sendNotification);

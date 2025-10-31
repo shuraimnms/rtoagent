@@ -6,7 +6,6 @@ const Settings = require('../models/Settings');
 const AuditLog = require('../models/AuditLog');
 const Transaction = require('../models/Transaction');
 const FraudAlert = require('../models/FraudAlert');
-const SupportTicket = require('../models/SupportTicket');
 
 // Agent Management Functions
 exports.getAllAgents = async (req, res) => {

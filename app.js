@@ -21,9 +21,10 @@ const webhookRoutes = require('./routes/webhook');
 const notificationRoutes = require('./routes/notifications');
 const rtoRoutes = require('./routes/rto');
 const auditRoutes = require('./routes/audit');
-const supportRoutes = require('./routes/support');
+
 const chatbotRoutes = require('./routes/chatbot'); // Ensure this is correctly imported
 const payRoutes = require('./routes/pay');
+const supportRoutes = require('./routes/support');
 
 // Import services
 const schedulerService = require('./services/schedulerService');
@@ -74,9 +75,10 @@ app.use('/api/v1/import', importRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/rto', rtoRoutes);
 app.use('/api/v1/audit', auditRoutes);
-app.use('/api/v1/support', supportRoutes);
+
 app.use('/api/v1/chatbot', chatbotRoutes); // Ensure this is correctly used
 app.use('/api/v1/pay', payRoutes);
+app.use('/api/v1/support', supportRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

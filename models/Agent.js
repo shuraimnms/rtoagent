@@ -24,7 +24,7 @@ const agentSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['super_admin', 'agent_admin', 'support'],
+    enum: ['super_admin', 'admin', 'agent_admin', 'support'],
     default: 'agent_admin'
   },
   company_name: {

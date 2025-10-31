@@ -40,3 +40,7 @@ redisClient.on('ready', () => {
 });
 
 redisClient.on('end', () => {
+  console.log('✅ Redis client disconnected');
+});
+
+module.exports = { redisClient };
