@@ -109,9 +109,13 @@ const settingsSchema = new mongoose.Schema({
     },
     appId: String,
     secretKey: String,
-    baseUrl: {
+    productionBaseUrl: {
       type: String,
       default: 'https://api.cashfree.com/pg'
+    },
+    sandboxBaseUrl: {
+      type: String,
+      default: 'https://sandbox.cashfree.com/pg'
     },
     callbackUrl: String,
     isProduction: {

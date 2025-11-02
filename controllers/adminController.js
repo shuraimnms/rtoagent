@@ -784,13 +784,20 @@ exports.updateGlobalSettings = async (req, res) => {
     // Update Cashfree settings
     if (cashfree) {
       settings.cashfree = {
-        baseUrl: cashfree.baseUrl || settings.cashfree?.baseUrl || 'https://api.cashfree.com/pg',
+        productionBaseUrl: cashfree.productionBaseUrl || settings.cashfree?.productionBaseUrl || 'https://api.cashfree.com/pg',
+        sandboxBaseUrl: cashfree.sandboxBaseUrl || settings.cashfree?.sandboxBaseUrl || 'https://sandbox.cashfree.com/pg',
         appId: cashfree.appId || settings.cashfree?.appId || '',
         secretKey: cashfree.secretKey || settings.cashfree?.secretKey || '',
         callbackUrl: cashfree.callbackUrl || settings.cashfree?.callbackUrl || '',
         enabled: cashfree.enabled !== undefined ? cashfree.enabled : settings.cashfree?.enabled || true,
         isProduction: cashfree.isProduction !== undefined ? cashfree.isProduction : settings.cashfree?.isProduction || false
       };
+
+      // Remove the old baseUrl field from the database document
+      await Settings.updateOne(
+        { _id: settings._id },
+        { $unset: { 'cashfree.baseUrl': 1 } }
+      );
     }
 
     await settings.save();
