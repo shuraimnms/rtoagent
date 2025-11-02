@@ -1,4 +1,8 @@
+<<<<<<< HEAD
  const express = require('express');
+=======
+const express = require('express');
+>>>>>>> d14d0c85b1d128149b48b68dce6f3db03885e37c
 const router = express.Router();
 const adminController = require('../controllers/adminController'); // Keep this for other admin routes
 const { protect, authorize } = require('../middleware/auth');
@@ -61,10 +65,13 @@ router.get('/export/revenue', adminController.exportRevenue);
 // MSG91 verification
 router.get('/settings/verify-msg91', adminController.verifyMSG91Config);
 
+<<<<<<< HEAD
 // Cashfree verification
 router.get('/settings/verify-cashfree', adminController.verifyCashfreeConfig);
 
 // Get agent role by email
 router.get('/agent-role/:email', adminController.getAgentRoleByEmail);
 
+=======
+>>>>>>> d14d0c85b1d128149b48b68dce6f3db03885e37c
 module.exports = router;

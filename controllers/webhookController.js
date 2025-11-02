@@ -2,8 +2,11 @@ const MessageLog = require('../models/MessageLog');
 const UnsubscribeList = require('../models/UnsubscribeList');
 const Agent = require('../models/Agent');
 const Settings = require('../models/Settings');
+<<<<<<< HEAD
 const Transaction = require('../models/Transaction');
 const cashfreeService = require('../services/cashfreeService');
+=======
+>>>>>>> d14d0c85b1d128149b48b68dce6f3db03885e37c
 
 exports.handleWebhook = async (req, res) => {
   try {
@@ -69,6 +72,7 @@ exports.handleInboundMessage = async (data) => {
   }
 };
 
+<<<<<<< HEAD
 /**
  * Handle Cashfree payment webhook
  */
@@ -116,6 +120,8 @@ exports.handleCashfreeWebhook = async (req, res) => {
   }
 };
 
+=======
+>>>>>>> d14d0c85b1d128149b48b68dce6f3db03885e37c
 
 
 

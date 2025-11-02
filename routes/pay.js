@@ -15,10 +15,13 @@ router.get('/balance', payController.getBalance);
 // Get transaction history
 router.get('/history', payController.getTransactionHistory);
 
+<<<<<<< HEAD
 // Initiate wallet top-up
 router.post('/topup', payController.initiateTopup);
 
 // Verify payment status
 router.get('/verify-payment/:orderId', payController.verifyPayment);
 
+=======
+>>>>>>> d14d0c85b1d128149b48b68dce6f3db03885e37c
 module.exports = router;

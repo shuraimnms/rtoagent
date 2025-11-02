@@ -29,7 +29,11 @@ const transactionSchema = new mongoose.Schema({
   },
   payment_gateway: {
     type: String,
+<<<<<<< HEAD
     enum: ['cashfree', 'manual'],
+=======
+    enum: ['cashfree', 'razorpay', 'jojoUpi', 'manual'],
+>>>>>>> d14d0c85b1d128149b48b68dce6f3db03885e37c
     default: 'manual'
   }
 }, {

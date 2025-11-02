@@ -85,10 +85,34 @@ const settingsSchema = new mongoose.Schema({
       min: 0
     }
   },
+<<<<<<< HEAD
   cashfree: {
     enabled: {
       type: Boolean,
       default: false
+=======
+  razorpay: {
+    keyId: String,
+    keySecret: String,
+    isProduction: {
+      type: Boolean,
+      default: false
+    }
+  },
+  jojoUpi: {
+    apiKey: String,
+    apiUrl: String,
+    callbackUrl: String,
+    enabled: {
+      type: Boolean,
+      default: true
+    }
+  },
+  cashfree: {
+    enabled: {
+      type: Boolean,
+      default: true
+>>>>>>> d14d0c85b1d128149b48b68dce6f3db03885e37c
     },
     appId: String,
     secretKey: String,
@@ -96,16 +120,24 @@ const settingsSchema = new mongoose.Schema({
       type: String,
       default: 'https://api.cashfree.com/pg'
     },
+<<<<<<< HEAD
     callbackUrl: String,
     isProduction: {
       type: Boolean,
       default: false
     }
+=======
+    callbackUrl: String
+>>>>>>> d14d0c85b1d128149b48b68dce6f3db03885e37c
   },
   paymentGateway: {
     primary: {
       type: String,
+<<<<<<< HEAD
       enum: ['cashfree'],
+=======
+      enum: ['cashfree', 'razorpay', 'jojoUpi', 'jojoupi'],
+>>>>>>> d14d0c85b1d128149b48b68dce6f3db03885e37c
       default: 'cashfree'
     }
   }
