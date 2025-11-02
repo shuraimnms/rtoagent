@@ -681,13 +681,8 @@ exports.updateGlobalSettings = async (req, res) => {
   try {
     console.log('=== Update Global Settings Request ===');
     console.log('Request Body:', JSON.stringify(req.body, null, 2));
-<<<<<<< HEAD
 
     const { msg91, pricing, system, wallet, cashfree } = req.body;
-=======
-    
-    const { msg91, pricing, system, wallet } = req.body;
->>>>>>> d14d0c85b1d128149b48b68dce6f3db03885e37c
 
     // Find existing settings or create new ones
     let settings = await Settings.findOne();
@@ -786,7 +781,6 @@ exports.updateGlobalSettings = async (req, res) => {
       };
     }
 
-<<<<<<< HEAD
     // Update Cashfree settings
     if (cashfree) {
       settings.cashfree = {
@@ -800,9 +794,6 @@ exports.updateGlobalSettings = async (req, res) => {
     }
 
     await settings.save();
-=======
-        await settings.save();
->>>>>>> d14d0c85b1d128149b48b68dce6f3db03885e37c
     console.log('Settings saved successfully');
 
     res.json({
@@ -858,7 +849,6 @@ exports.getGlobalSettings = async (req, res) => {
         system: {
           maxRetries: 3,
           schedulerInterval: 5
-<<<<<<< HEAD
         },
         wallet: {
           min_topup_amount: 10,
@@ -892,19 +882,17 @@ exports.getGlobalSettings = async (req, res) => {
         },
         paymentGateway: {
           primary: 'jojoupi'
-=======
->>>>>>> d14d0c85b1d128149b48b68dce6f3db03885e37c
         }
       });
       await settings.save();
     }
 
-    res.json({
+    return res.json({
       success: true,
       data: settings
     });
   } catch (error) {
-    res.status(400).json({
+    return res.status(400).json({
       success: false,
       message: error.message
     });
@@ -1097,7 +1085,6 @@ exports.verifyMSG91Config = async (req, res) => {
 };
 
 /**
-<<<<<<< HEAD
  * @desc    Verify Cashfree configuration
  * @route   GET /api/v1/admin/settings/verify-cashfree
  * @access  Private (Admin)
@@ -1136,8 +1123,6 @@ exports.verifyCashfreeConfig = async (req, res) => {
 };
 
 /**
-=======
->>>>>>> d14d0c85b1d128149b48b68dce6f3db03885e37c
  * @desc    Reset all wallet usage data
  * @route   POST /api/v1/admin/reset/wallet-usage
  * @access  Private (Admin)
@@ -1325,7 +1310,6 @@ exports.exportWalletUsage = async (req, res) => {
 };
 
 /**
-<<<<<<< HEAD
  * @desc    Get agent role by email
  * @route   GET /api/v1/admin/agent-role/:email
  * @access  Private (Admin)
@@ -1356,8 +1340,6 @@ exports.getAgentRoleByEmail = async (req, res) => {
 };
 
 /**
-=======
->>>>>>> d14d0c85b1d128149b48b68dce6f3db03885e37c
  * @desc    Export revenue data to CSV
  * @route   GET /api/v1/admin/export/revenue
  * @access  Private (Admin)

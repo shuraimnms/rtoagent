@@ -1,10 +1,7 @@
 const Agent = require('../models/Agent');
 const Transaction = require('../models/Transaction');
 const Settings = require('../models/Settings');
-<<<<<<< HEAD
 const cashfreeService = require('../services/cashfreeService');
-=======
->>>>>>> d14d0c85b1d128149b48b68dce6f3db03885e37c
 
 /**
  * @desc    Simple pay button functionality - directly update wallet balance
@@ -114,25 +111,18 @@ exports.getBalance = async (req, res) => {
       };
     }
 
-<<<<<<< HEAD
     // Check if payment integration is enabled
     let paymentEnabled = false;
     if (globalSettings && globalSettings.cashfree && globalSettings.cashfree.enabled) {
       paymentEnabled = true;
     }
 
-=======
->>>>>>> d14d0c85b1d128149b48b68dce6f3db03885e37c
     res.json({
       success: true,
       data: {
         balance: agent.wallet_balance,
-<<<<<<< HEAD
         settings: walletSettings,
         paymentEnabled: paymentEnabled
-=======
-        settings: walletSettings
->>>>>>> d14d0c85b1d128149b48b68dce6f3db03885e37c
       }
     });
 
@@ -180,7 +170,6 @@ exports.getTransactionHistory = async (req, res) => {
     });
   }
 };
-<<<<<<< HEAD
 
 /**
  * @desc    Initiate wallet top-up (normal or payment gateway)
@@ -436,5 +425,3 @@ exports.verifyPayment = async (req, res) => {
     });
   }
 };
-=======
->>>>>>> d14d0c85b1d128149b48b68dce6f3db03885e37c

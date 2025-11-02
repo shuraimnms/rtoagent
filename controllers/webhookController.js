@@ -2,12 +2,12 @@ const MessageLog = require('../models/MessageLog');
 const UnsubscribeList = require('../models/UnsubscribeList');
 const Agent = require('../models/Agent');
 const Settings = require('../models/Settings');
-<<<<<<< HEAD
 const Transaction = require('../models/Transaction');
 const cashfreeService = require('../services/cashfreeService');
-=======
->>>>>>> d14d0c85b1d128149b48b68dce6f3db03885e37c
 
+/**
+ * General webhook handler
+ */
 exports.handleWebhook = async (req, res) => {
   try {
     const { type, data } = req.body;
@@ -16,9 +16,11 @@ exports.handleWebhook = async (req, res) => {
       case 'message_status':
         await this.handleMessageStatus(data);
         break;
+
       case 'inbound_message':
         await this.handleInboundMessage(data);
         break;
+
       default:
         console.log('Unknown webhook type:', type);
     }
@@ -30,8 +32,9 @@ exports.handleWebhook = async (req, res) => {
   }
 };
 
-
-
+/**
+ * Handle message delivery status updates
+ */
 exports.handleMessageStatus = async (data) => {
   const { message_id, status, recipient, timestamp } = data;
 
@@ -43,10 +46,12 @@ exports.handleMessageStatus = async (data) => {
       messageLog.status = 'DELIVERED';
       messageLog.delivered_at = new Date(timestamp);
       break;
+
     case 'read':
       messageLog.status = 'READ';
       messageLog.read_at = new Date(timestamp);
       break;
+
     case 'failed':
     case 'undelivered':
       messageLog.status = 'FAILED';
@@ -57,8 +62,11 @@ exports.handleMessageStatus = async (data) => {
   await messageLog.save();
 };
 
+/**
+ * Handle inbound messages (e.g. user replies like "STOP")
+ */
 exports.handleInboundMessage = async (data) => {
-  const { from, text, timestamp } = data;
+  const { from, text } = data;
 
   if (text && text.trim().toLowerCase() === 'stop') {
     await UnsubscribeList.findOneAndUpdate(
@@ -72,7 +80,6 @@ exports.handleInboundMessage = async (data) => {
   }
 };
 
-<<<<<<< HEAD
 /**
  * Handle Cashfree payment webhook
  */
@@ -88,40 +95,39 @@ exports.handleCashfreeWebhook = async (req, res) => {
     }
 
     const webhookData = req.body;
-
-    // Process the webhook data
     const processedData = await cashfreeService.processWebhook(webhookData);
 
-    // Find and update transaction
+    // Find transaction by orderId
     const transaction = await Transaction.findOne({ transaction_id: processedData.orderId });
 
     if (transaction) {
-      // Update transaction status
+      const previousStatus = transaction.payment_status;
+
+      // Update transaction fields
       transaction.payment_status = processedData.status;
       transaction.gateway_response = webhookData;
 
-      // If payment successful, update wallet balance
-      if (processedData.status === 'success' && transaction.payment_status !== 'success') {
+      // If payment succeeded and was not already marked success
+      if (processedData.status === 'success' && previousStatus !== 'success') {
         const agent = await Agent.findById(transaction.agent);
-        const newBalance = agent.wallet_balance + processedData.amount;
 
-        await Agent.findByIdAndUpdate(transaction.agent, { wallet_balance: newBalance });
-        transaction.balance_after = newBalance;
+        if (agent) {
+          const newBalance = agent.wallet_balance + processedData.amount;
+          await Agent.findByIdAndUpdate(transaction.agent, { wallet_balance: newBalance });
+          transaction.balance_after = newBalance;
+        }
       }
 
       await transaction.save();
-      console.log(`Transaction ${processedData.orderId} updated to status: ${processedData.status}`);
+      console.log(`✅ Transaction ${processedData.orderId} updated to status: ${processedData.status}`);
+    } else {
+      console.warn(`⚠️ Transaction not found for orderId: ${processedData.orderId}`);
     }
 
     res.status(200).json({ success: true });
   } catch (error) {
     console.error('Cashfree webhook error:', error);
-    res.status(200).json({ success: false }); // Return 200 to prevent retries
+    // Always respond 200 to prevent Cashfree retries
+    res.status(200).json({ success: false });
   }
 };
-
-=======
->>>>>>> d14d0c85b1d128149b48b68dce6f3db03885e37c
-
-
-
