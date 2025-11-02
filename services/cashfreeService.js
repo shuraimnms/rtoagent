@@ -18,11 +18,16 @@ class CashfreeService {
         throw new Error('Cashfree settings not configured');
       }
 
-      this.baseUrl = settings.cashfree.baseUrl || (settings.cashfree.isProduction ? 'https://api.cashfree.com/pg' : 'https://sandbox.cashfree.com/pg');
+      // Determine environment: use paymentIntegration.environment if available, else fallback to cashfree.isProduction
+      const environment = settings.paymentIntegration?.environment || (settings.cashfree.isProduction ? 'production' : 'sandbox');
+
+      // Set baseUrl based on environment
+      this.baseUrl = environment === 'production' ? 'https://api.cashfree.com/pg' : 'https://sandbox.cashfree.com/pg';
+      this.isProduction = environment === 'production';
+
       this.appId = settings.cashfree.appId;
       this.secretKey = settings.cashfree.secretKey;
       this.callbackUrl = settings.cashfree.callbackUrl || `${process.env.FRONTEND_URL || 'http://localhost:5173'}/api/v1/webhook/cashfree`;
-      this.isProduction = settings.cashfree.isProduction || false;
 
       if (!this.appId || !this.secretKey) {
         throw new Error('Cashfree API credentials not configured');
@@ -58,7 +63,7 @@ class CashfreeService {
         customer_name: customerDetails.name
       },
       order_meta: {
-        return_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment-success?order_id={order_id}`,
+        return_url: this.isProduction ? `https://rtoagent.netlify.app/payment-success?order_id={order_id}` : `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment-success?order_id={order_id}`,
         notify_url: this.callbackUrl,
         payment_methods: 'cc,dc,nb,upi'
       },
