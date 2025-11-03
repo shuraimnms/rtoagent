@@ -113,7 +113,7 @@ exports.getBalance = async (req, res) => {
 
     // Check if payment integration is enabled
     let paymentEnabled = false;
-    if (globalSettings && globalSettings.cashfree && globalSettings.cashfree.enabled) {
+    if (globalSettings && globalSettings.paymentIntegration && globalSettings.paymentIntegration.enabled) {
       paymentEnabled = true;
     }
 
@@ -192,8 +192,8 @@ exports.initiateTopup = async (req, res) => {
     // Get global settings
     const globalSettings = await Settings.findOne();
 
-    // Check if payment integration is enabled (Cashfree only)
-    const paymentIntegrationEnabled = globalSettings?.cashfree?.enabled || false;
+    // Check if payment integration is enabled
+    const paymentIntegrationEnabled = globalSettings?.paymentIntegration?.enabled || false;
 
     if (!paymentIntegrationEnabled) {
       // Normal top-up mode

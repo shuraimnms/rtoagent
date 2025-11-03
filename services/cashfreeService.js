@@ -19,7 +19,7 @@ class CashfreeService {
       }
 
       // Determine environment: use paymentIntegration.environment if available, else fallback to cashfree.isProduction
-      const environment = settings.paymentIntegration?.environment || (settings.cashfree.isProduction ? 'production' : 'sandbox');
+      const environment = settings.paymentIntegration?.environment || (settings.cashfree?.isProduction ? 'production' : 'sandbox');
 
       // Set baseUrl based on environment, using configured URLs from settings
       this.baseUrl = environment === 'production'

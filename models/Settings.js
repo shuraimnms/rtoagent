@@ -123,6 +123,17 @@ const settingsSchema = new mongoose.Schema({
       default: false
     }
   },
+  paymentIntegration: {
+    enabled: {
+      type: Boolean,
+      default: false
+    },
+    environment: {
+      type: String,
+      enum: ['sandbox', 'production'],
+      default: 'sandbox'
+    }
+  },
   paymentGateway: {
     primary: {
       type: String,

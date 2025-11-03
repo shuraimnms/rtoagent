@@ -785,7 +785,7 @@ exports.updateGlobalSettings = async (req, res) => {
     if (cashfree) {
       settings.cashfree = {
         productionBaseUrl: cashfree.productionBaseUrl || settings.cashfree?.productionBaseUrl || 'https://api.cashfree.com/pg',
-        sandboxBaseUrl: cashfree.sandboxBaseUrl || settings.cashfree?.sandboxBaseUrl || 'https://sandbox.cashfree.com/pg',
+        sandboxBaseUrl: cashfree.sandboxBaseUrl || settings.cashfree?.sandboxBaseUrl || ' ',
         appId: cashfree.appId || settings.cashfree?.appId || '',
         secretKey: cashfree.secretKey || settings.cashfree?.secretKey || '',
         callbackUrl: cashfree.callbackUrl || settings.cashfree?.callbackUrl || '',
@@ -798,6 +798,18 @@ exports.updateGlobalSettings = async (req, res) => {
         { _id: settings._id },
         { $unset: { 'cashfree.baseUrl': 1 } }
       );
+    }
+
+    // Update paymentIntegration settings
+    if (req.body.paymentIntegration) {
+      Object.assign(settings.paymentIntegration, req.body.paymentIntegration);
+
+      // Sync environment to cashfree settings
+      if (req.body.paymentIntegration.environment === 'production') {
+        settings.cashfree.isProduction = true;
+      } else if (req.body.paymentIntegration.environment === 'sandbox') {
+        settings.cashfree.isProduction = false;
+      }
     }
 
     await settings.save();
