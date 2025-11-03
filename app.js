@@ -79,6 +79,7 @@ app.use('/api/v1/audit', auditRoutes);
 app.use('/api/v1/chatbot', chatbotRoutes); // Ensure this is correctly used
 app.use('/api/v1/pay', payRoutes);
 app.use('/api/v1/support', supportRoutes);
+app.use('/api/v1/webhook', webhookRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
