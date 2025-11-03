@@ -85,7 +85,7 @@ exports.handleInboundMessage = async (data) => {
  */
 exports.handleCashfreeWebhook = async (req, res) => {
   try {
-    const rawBody = JSON.stringify(req.body);
+    const rawBody = req.body.toString();
     const signature = req.headers['x-webhook-signature'];
 
     // Verify webhook signature

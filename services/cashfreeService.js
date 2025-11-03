@@ -65,7 +65,7 @@ class CashfreeService {
         customer_name: customerDetails.name
       },
       order_meta: {
-        return_url: this.isProduction ? `https://rtoagent.netlify.app/payment-success?order_id={order_id}` : `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment-success?order_id={order_id}`,
+        return_url: `https://rtoagent.netlify.app/payment-success?order_id={order_id}`,
         notify_url: this.callbackUrl,
         payment_methods: 'cc,dc,nb,upi'
       },
@@ -148,9 +148,9 @@ class CashfreeService {
 
       // Update transaction status based on payment status
       let status = 'pending';
-      if (paymentStatus === 'SUCCESS') {
+      if (paymentStatus === 'SUCCESS' || paymentStatus === 'success' || paymentStatus === 'PAID' || paymentStatus === 'COMPLETED') {
         status = 'success';
-      } else if (paymentStatus === 'FAILED' || paymentStatus === 'CANCELLED') {
+      } else if (paymentStatus === 'FAILED' || paymentStatus === 'CANCELLED' || paymentStatus === 'failed') {
         status = 'failed';
       }
 

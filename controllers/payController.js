@@ -2,9 +2,6 @@ const Agent = require('../models/Agent');
 const Transaction = require('../models/Transaction');
 const Settings = require('../models/Settings');
 const cashfreeService = require('../services/cashfreeService');
-const jojoupiService = require('../services/jojoupiService');
-const razorpayService = require('../services/razorpayService');
-const axios = require('axios');
 
 /**
  * @desc    Simple pay button functionality - directly update wallet balance
@@ -298,33 +295,10 @@ async function handlePaymentGatewayTopup(amount, agent, globalSettings, res) {
       });
     }
 
-    // Get primary payment gateway
-    const primaryGateway = globalSettings?.paymentGateway?.primary || 'cashfree';
-
-    let service, gatewayName, descriptionSuffix;
-    switch (primaryGateway) {
-      case 'cashfree':
-        service = cashfreeService;
-        gatewayName = 'cashfree';
-        descriptionSuffix = 'via Cashfree';
-        break;
-      case 'jojoupi':
-      case 'jojoUpi':
-        service = jojoupiService;
-        gatewayName = 'jojoupi';
-        descriptionSuffix = 'via JojoUPI';
-        break;
-      case 'razorpay':
-        service = razorpayService;
-        gatewayName = 'razorpay';
-        descriptionSuffix = 'via Razorpay';
-        break;
-      default:
-        return res.status(400).json({
-          success: false,
-          message: 'Unsupported payment gateway'
-        });
-    }
+    // Hardcoded to only use Cashfree
+    const service = cashfreeService;
+    const gatewayName = 'cashfree';
+    const descriptionSuffix = 'via Cashfree';
 
     // Generate order ID
     const orderId = service.generateOrderId();
@@ -411,28 +385,8 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
-    // Get primary payment gateway from settings
-    const globalSettings = await Settings.findOne();
-    const primaryGateway = globalSettings?.paymentGateway?.primary || 'cashfree';
-
-    let service;
-    switch (primaryGateway) {
-      case 'cashfree':
-        service = cashfreeService;
-        break;
-      case 'jojoupi':
-      case 'jojoUpi':
-        service = jojoupiService;
-        break;
-      case 'razorpay':
-        service = razorpayService;
-        break;
-      default:
-        return res.status(400).json({
-          success: false,
-          message: 'Unsupported payment gateway'
-        });
-    }
+    // Hardcoded to only use Cashfree
+    const service = cashfreeService;
 
     // Check payment status with the appropriate service
     const statusResponse = await service.getOrderStatus(orderId);
@@ -450,7 +404,9 @@ exports.verifyPayment = async (req, res) => {
       transaction.gateway_response = statusResponse.data;
 
       // If payment successful, update wallet balance
-      if (statusResponse.paymentStatus === 'success' && transaction.payment_status !== 'success') {
+      const successStatuses = ['SUCCESS', 'success', 'PAID', 'COMPLETED'];
+      const completedStatuses = ['success', 'SUCCESS', 'PAID', 'COMPLETED'];
+      if (successStatuses.includes(statusResponse.paymentStatus) && !completedStatuses.includes(transaction.payment_status)) {
         const agentDoc = await Agent.findById(agent._id);
         const newBalance = agentDoc.wallet_balance + transaction.amount;
 
