@@ -400,13 +400,13 @@ exports.verifyPayment = async (req, res) => {
 
     // Update transaction if status changed
     if (transaction.payment_status !== statusResponse.paymentStatus) {
+      const previousStatus = transaction.payment_status;
       transaction.payment_status = statusResponse.paymentStatus;
       transaction.gateway_response = statusResponse.data;
 
-      // If payment successful, update wallet balance
+      // If payment became successful, update wallet balance
       const successStatuses = ['SUCCESS', 'success', 'PAID', 'COMPLETED'];
-      const completedStatuses = ['success', 'SUCCESS', 'PAID', 'COMPLETED'];
-      if (successStatuses.includes(statusResponse.paymentStatus) && !completedStatuses.includes(transaction.payment_status)) {
+      if (successStatuses.includes(statusResponse.paymentStatus) && !successStatuses.includes(previousStatus)) {
         const agentDoc = await Agent.findById(agent._id);
         const newBalance = agentDoc.wallet_balance + transaction.amount;
 

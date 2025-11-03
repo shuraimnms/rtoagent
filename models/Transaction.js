@@ -30,6 +30,11 @@ const transactionSchema = new mongoose.Schema({
   payment_gateway: {
     type: String,
     enum: ['cashfree', 'manual'],
+  },
+  payment_status: {
+    type: String,
+    enum: ['pending', 'success', 'failed', 'cancelled'],
+    default: 'pending'
   }
 }, {
   timestamps: true

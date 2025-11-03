@@ -94,7 +94,7 @@ exports.handleCashfreeWebhook = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid signature' });
     }
 
-    const webhookData = req.body;
+    const webhookData = JSON.parse(req.body.toString());
     const processedData = await cashfreeService.processWebhook(webhookData);
 
     // Find transaction by orderId
@@ -107,8 +107,9 @@ exports.handleCashfreeWebhook = async (req, res) => {
       transaction.payment_status = processedData.status;
       transaction.gateway_response = webhookData;
 
-      // If payment succeeded and was not already marked success
-      if (processedData.status === 'success' && previousStatus !== 'success') {
+      // If payment became successful, update wallet balance
+      const successStatuses = ['SUCCESS', 'success', 'PAID', 'COMPLETED'];
+      if (successStatuses.includes(processedData.status) && !successStatuses.includes(previousStatus)) {
         const agent = await Agent.findById(transaction.agent);
 
         if (agent) {
