@@ -2,6 +2,9 @@ const Agent = require('../models/Agent');
 const Transaction = require('../models/Transaction');
 const Settings = require('../models/Settings');
 const cashfreeService = require('../services/cashfreeService');
+const jojoupiService = require('../services/jojoupiService');
+const razorpayService = require('../services/razorpayService');
+const axios = require('axios');
 
 /**
  * @desc    Simple pay button functionality - directly update wallet balance
@@ -268,7 +271,7 @@ async function handleNormalTopup(amount, agent, globalSettings, res) {
 }
 
 /**
- * Handle payment gateway top-up (Cashfree)
+ * Handle payment gateway top-up (dynamic based on primary gateway)
  */
 async function handlePaymentGatewayTopup(amount, agent, globalSettings, res) {
   try {
@@ -295,10 +298,38 @@ async function handlePaymentGatewayTopup(amount, agent, globalSettings, res) {
       });
     }
 
-    // Generate order ID
-    const orderId = cashfreeService.generateOrderId();
+    // Get primary payment gateway
+    const primaryGateway = globalSettings?.paymentGateway?.primary || 'cashfree';
 
-    // Create Cashfree order
+    let service, gatewayName, descriptionSuffix;
+    switch (primaryGateway) {
+      case 'cashfree':
+        service = cashfreeService;
+        gatewayName = 'cashfree';
+        descriptionSuffix = 'via Cashfree';
+        break;
+      case 'jojoupi':
+      case 'jojoUpi':
+        service = jojoupiService;
+        gatewayName = 'jojoupi';
+        descriptionSuffix = 'via JojoUPI';
+        break;
+      case 'razorpay':
+        service = razorpayService;
+        gatewayName = 'razorpay';
+        descriptionSuffix = 'via Razorpay';
+        break;
+      default:
+        return res.status(400).json({
+          success: false,
+          message: 'Unsupported payment gateway'
+        });
+    }
+
+    // Generate order ID
+    const orderId = service.generateOrderId();
+
+    // Create order data
     const orderData = {
       orderId,
       orderAmount: amount,
@@ -313,13 +344,13 @@ async function handlePaymentGatewayTopup(amount, agent, globalSettings, res) {
       }
     };
 
-    const cashfreeResponse = await cashfreeService.createOrder(orderData);
+    const response = await service.createOrder(orderData);
 
-    if (!cashfreeResponse.success) {
+    if (!response.success) {
       return res.status(400).json({
         success: false,
         message: 'Failed to create payment order',
-        error: cashfreeResponse.error
+        error: response.error
       });
     }
 
@@ -329,20 +360,20 @@ async function handlePaymentGatewayTopup(amount, agent, globalSettings, res) {
       type: 'topup',
       amount: amount,
       balance_after: agent.wallet_balance, // Will be updated on success
-      description: `Wallet topup of ₹${amount} via Cashfree`,
+      description: `Wallet topup of ₹${amount} ${descriptionSuffix}`,
       transaction_id: orderId,
-      payment_gateway: 'cashfree',
+      payment_gateway: gatewayName,
       payment_status: 'pending',
-      gateway_response: cashfreeResponse.data
+      gateway_response: response.data
     });
 
     res.json({
       success: true,
       message: 'Payment order created successfully',
       data: {
-        orderId: cashfreeResponse.orderId,
-        paymentLink: cashfreeResponse.paymentLink,
-        paymentSessionId: cashfreeResponse.paymentSessionId,
+        orderId: response.orderId,
+        paymentLink: response.paymentLink,
+        paymentSessionId: response.paymentSessionId,
         mode: 'payment_gateway'
       }
     });
@@ -380,8 +411,31 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
-    // Check payment status with Cashfree
-    const statusResponse = await cashfreeService.getOrderStatus(orderId);
+    // Get primary payment gateway from settings
+    const globalSettings = await Settings.findOne();
+    const primaryGateway = globalSettings?.paymentGateway?.primary || 'cashfree';
+
+    let service;
+    switch (primaryGateway) {
+      case 'cashfree':
+        service = cashfreeService;
+        break;
+      case 'jojoupi':
+      case 'jojoUpi':
+        service = jojoupiService;
+        break;
+      case 'razorpay':
+        service = razorpayService;
+        break;
+      default:
+        return res.status(400).json({
+          success: false,
+          message: 'Unsupported payment gateway'
+        });
+    }
+
+    // Check payment status with the appropriate service
+    const statusResponse = await service.getOrderStatus(orderId);
 
     if (!statusResponse.success) {
       return res.status(400).json({
