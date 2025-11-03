@@ -29,7 +29,9 @@ class CashfreeService {
 
       this.appId = settings.cashfree.appId;
       this.secretKey = settings.cashfree.secretKey;
-      this.callbackUrl = settings.cashfree.callbackUrl || `${process.env.FRONTEND_URL || 'http://localhost:5173'}/api/v1/webhook/cashfree`;
+      this.callbackUrl = settings.cashfree.callbackUrl || `${process.env.FRONTEND_URL || 'http://localhost:5173'}/api/v1/webhooks/cashfree`; // Corrected path to /webhooks
+
+      console.log('CashfreeService Initialized with Callback URL:', this.callbackUrl);
 
       if (!this.appId || !this.secretKey) {
         throw new Error('Cashfree API credentials not configured');
