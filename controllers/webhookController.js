@@ -88,19 +88,34 @@ exports.handleCashfreeWebhook = async (req, res) => {
     const rawBody = req.body.toString();
     const signature = req.headers['x-webhook-signature'];
 
+    console.log('Cashfree Webhook - Raw Body:', rawBody);
+    console.log('Cashfree Webhook - Signature:', signature);
+
     // Verify webhook signature
     if (!cashfreeService.verifyWebhookSignature(rawBody, signature)) {
       console.error('Invalid webhook signature');
       return res.status(400).json({ success: false, message: 'Invalid signature' });
     }
 
-    const webhookData = JSON.parse(req.body.toString());
+    const webhookData = JSON.parse(rawBody);
+    console.log('Cashfree Webhook - Parsed Data:', JSON.stringify(webhookData, null, 2));
+
     const processedData = await cashfreeService.processWebhook(webhookData);
+    console.log('Cashfree Webhook - Processed Data:', processedData);
 
     // Find transaction by orderId
     const transaction = await Transaction.findOne({ transaction_id: processedData.orderId });
+    console.log('Cashfree Webhook - Transaction Query Result:', transaction ? 'Found' : 'Not Found');
 
     if (transaction) {
+      console.log('Cashfree Webhook - Found Transaction:', {
+        id: transaction._id,
+        transaction_id: transaction.transaction_id,
+        current_status: transaction.payment_status,
+        agent: transaction.agent,
+        amount: transaction.amount
+      });
+
       const previousStatus = transaction.payment_status;
 
       // Update transaction fields
@@ -110,19 +125,44 @@ exports.handleCashfreeWebhook = async (req, res) => {
       // If payment became successful, update wallet balance
       const successStatuses = ['SUCCESS', 'success', 'PAID', 'COMPLETED'];
       if (successStatuses.includes(processedData.status) && !successStatuses.includes(previousStatus)) {
+        console.log('Cashfree Webhook - Updating wallet balance for successful payment');
+
         const agent = await Agent.findById(transaction.agent);
+        console.log('Cashfree Webhook - Agent found:', agent ? { id: agent._id, current_balance: agent.wallet_balance } : 'Not Found');
 
         if (agent) {
           const newBalance = agent.wallet_balance + processedData.amount;
+          console.log('Cashfree Webhook - New balance calculation:', {
+            current_balance: agent.wallet_balance,
+            amount_to_add: processedData.amount,
+            new_balance: newBalance
+          });
+
           await Agent.findByIdAndUpdate(transaction.agent, { wallet_balance: newBalance });
           transaction.balance_after = newBalance;
+
+          console.log('Cashfree Webhook - Wallet balance updated successfully');
+        } else {
+          console.error('Cashfree Webhook - Agent not found for transaction');
         }
+      } else {
+        console.log('Cashfree Webhook - Payment status transition check:', {
+          new_status: processedData.status,
+          previous_status: previousStatus,
+          should_update_balance: successStatuses.includes(processedData.status) && !successStatuses.includes(previousStatus)
+        });
       }
 
       await transaction.save();
-      console.log(`✅ Transaction ${processedData.orderId} updated to status: ${processedData.status}`);
+      console.log(`✅ Cashfree Webhook - Transaction ${processedData.orderId} updated to status: ${processedData.status}`);
     } else {
-      console.warn(`⚠️ Transaction not found for orderId: ${processedData.orderId}`);
+      console.warn(`⚠️ Cashfree Webhook - Transaction not found for orderId: ${processedData.orderId}`);
+      console.log('Cashfree Webhook - Available transactions in DB (last 5):');
+      const recentTransactions = await Transaction.find({})
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .select('transaction_id payment_status createdAt');
+      console.log(recentTransactions);
     }
 
     res.status(200).json({ success: true });

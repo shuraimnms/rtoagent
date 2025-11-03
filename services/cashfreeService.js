@@ -144,7 +144,28 @@ class CashfreeService {
 
   async processWebhook(webhookData) {
     try {
-      const { orderId, orderAmount, paymentStatus, paymentMessage } = webhookData;
+      // Handle different webhook data structures
+      let orderId, orderAmount, paymentStatus;
+
+      if (webhookData.data) {
+        // New structure with data wrapper
+        const data = webhookData.data;
+        if (data.order) {
+          orderId = data.order.order_id;
+          orderAmount = data.order.order_amount;
+          paymentStatus = data.payment?.payment_status || data.order.order_status;
+        } else {
+          // Direct data structure
+          orderId = data.orderId || data.order_id;
+          orderAmount = data.orderAmount || data.order_amount;
+          paymentStatus = data.paymentStatus || data.payment_status;
+        }
+      } else {
+        // Legacy structure
+        orderId = webhookData.orderId || webhookData.order_id;
+        orderAmount = webhookData.orderAmount || webhookData.order_amount;
+        paymentStatus = webhookData.paymentStatus || webhookData.payment_status;
+      }
 
       // Update transaction status based on payment status
       let status = 'pending';

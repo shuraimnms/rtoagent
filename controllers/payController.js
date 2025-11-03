@@ -372,6 +372,8 @@ exports.verifyPayment = async (req, res) => {
     const { orderId } = req.params;
     const agent = req.agent;
 
+    console.log('Payment Verification - Order ID:', orderId, 'Agent:', agent._id);
+
     // Get transaction by order ID
     const transaction = await Transaction.findOne({
       transaction_id: orderId,
@@ -379,11 +381,18 @@ exports.verifyPayment = async (req, res) => {
     });
 
     if (!transaction) {
+      console.log('Payment Verification - Transaction not found for orderId:', orderId);
       return res.status(404).json({
         success: false,
         message: 'Transaction not found'
       });
     }
+
+    console.log('Payment Verification - Found transaction:', {
+      id: transaction._id,
+      current_status: transaction.payment_status,
+      amount: transaction.amount
+    });
 
     // Hardcoded to only use Cashfree
     const service = cashfreeService;
@@ -392,29 +401,49 @@ exports.verifyPayment = async (req, res) => {
     const statusResponse = await service.getOrderStatus(orderId);
 
     if (!statusResponse.success) {
+      console.log('Payment Verification - Failed to get order status from Cashfree');
       return res.status(400).json({
         success: false,
         message: 'Failed to verify payment status'
       });
     }
 
+    console.log('Payment Verification - Cashfree status response:', statusResponse);
+
     // Update transaction if status changed
     if (transaction.payment_status !== statusResponse.paymentStatus) {
       const previousStatus = transaction.payment_status;
-      transaction.payment_status = statusResponse.paymentStatus;
+      console.log('Payment Verification - Status changed from', previousStatus, 'to', statusResponse.paymentStatus);
+
+      transaction.payment_status = transaction.payment_status = statusResponse.paymentStatus;
       transaction.gateway_response = statusResponse.data;
 
       // If payment became successful, update wallet balance
       const successStatuses = ['SUCCESS', 'success', 'PAID', 'COMPLETED'];
       if (successStatuses.includes(statusResponse.paymentStatus) && !successStatuses.includes(previousStatus)) {
+        console.log('Payment Verification - Updating wallet balance for successful payment');
+
         const agentDoc = await Agent.findById(agent._id);
         const newBalance = agentDoc.wallet_balance + transaction.amount;
 
+        console.log('Payment Verification - Balance calculation:', {
+          current_balance: agentDoc.wallet_balance,
+          amount_to_add: transaction.amount,
+          new_balance: newBalance
+        });
+
         await Agent.findByIdAndUpdate(agent._id, { wallet_balance: newBalance });
         transaction.balance_after = newBalance;
+
+        console.log('Payment Verification - Wallet balance updated successfully');
+      } else {
+        console.log('Payment Verification - No balance update needed');
       }
 
       await transaction.save();
+      console.log('Payment Verification - Transaction saved with new status');
+    } else {
+      console.log('Payment Verification - Status unchanged, no update needed');
     }
 
     res.json({
@@ -429,6 +458,72 @@ exports.verifyPayment = async (req, res) => {
 
   } catch (error) {
     console.error('Payment verification error:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+/**
+ * @desc    Manually update payment status (admin/fallback)
+ * @route   POST /api/v1/pay/manual-update/:orderId
+ * @access  Private (Admin only)
+ */
+exports.manualPaymentUpdate = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { status } = req.body;
+    const agent = req.agent;
+
+    console.log('Manual Payment Update - Order ID:', orderId, 'New Status:', status);
+
+    // Get transaction by order ID
+    const transaction = await Transaction.findOne({
+      transaction_id: orderId,
+      agent: agent._id
+    });
+
+    if (!transaction) {
+      return res.status(404).json({
+        success: false,
+        message: 'Transaction not found'
+      });
+    }
+
+    const previousStatus = transaction.payment_status;
+
+    // Update transaction status
+    transaction.payment_status = status;
+    transaction.gateway_response = { manual_update: true, updated_by: agent._id, updated_at: new Date() };
+
+    // If payment became successful, update wallet balance
+    const successStatuses = ['SUCCESS', 'success', 'PAID', 'COMPLETED'];
+    if (successStatuses.includes(status) && !successStatuses.includes(previousStatus)) {
+      const agentDoc = await Agent.findById(agent._id);
+      const newBalance = agentDoc.wallet_balance + transaction.amount;
+
+      await Agent.findByIdAndUpdate(agent._id, { wallet_balance: newBalance });
+      transaction.balance_after = newBalance;
+
+      console.log('Manual Payment Update - Balance updated to:', newBalance);
+    }
+
+    await transaction.save();
+
+    res.json({
+      success: true,
+      message: `Payment status updated to ${status}`,
+      data: {
+        orderId,
+        status: transaction.payment_status,
+        amount: transaction.amount,
+        balance_after: transaction.balance_after
+      }
+    });
+
+  } catch (error) {
+    console.error('Manual payment update error:', error);
     res.status(400).json({
       success: false,
       message: error.message

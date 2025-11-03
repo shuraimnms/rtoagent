@@ -21,4 +21,7 @@ router.post('/topup', payController.initiateTopup);
 // Verify payment status
 router.get('/verify-payment/:orderId', payController.verifyPayment);
 
+// Manual payment status update (fallback)
+router.post('/manual-update/:orderId', payController.manualPaymentUpdate);
+
 module.exports = router;
