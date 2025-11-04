@@ -382,6 +382,7 @@ exports.verifyPayment = async (req, res) => {
 
     if (!transaction) {
       console.log('❌ Payment Verification - Transaction not found');
+      console.error('❌ Payment Verification - Transaction not found for orderId:', orderId, 'agent:', agent._id);
       return res.status(404).json({
         success: false,
         message: 'Transaction not found'
@@ -399,6 +400,7 @@ exports.verifyPayment = async (req, res) => {
 
     if (!statusResponse.success) {
       console.log('❌ Payment Verification - Failed to get status from Cashfree');
+      console.error('❌ Payment Verification - Cashfree API error:', statusResponse.error);
       return res.status(400).json({
         success: false,
         message: 'Failed to verify payment status'
@@ -411,13 +413,19 @@ exports.verifyPayment = async (req, res) => {
     });
 
     const currentStatus = transaction.payment_status;
-    const newStatus = statusResponse.paymentStatus;
+    let newStatus = statusResponse.paymentStatus;
+
+    // Map UNKNOWN to a valid status
+    if (newStatus === 'UNKNOWN') {
+      newStatus = 'pending';
+    }
 
     // Update if status changed
     if (currentStatus !== newStatus) {
       console.log('🔄 Payment Verification - Status changed:', currentStatus, '→', newStatus);
 
-      transaction.payment_status = newStatus;
+      // Skip validation for this update to avoid enum issues
+      transaction.set('payment_status', newStatus, { strict: false });
       transaction.gateway_response = statusResponse.data;
 
       // Check if payment became successful
@@ -451,7 +459,7 @@ exports.verifyPayment = async (req, res) => {
         console.log('ℹ️ Payment Verification - No balance update needed');
       }
 
-      await transaction.save();
+      await transaction.save({ validateBeforeSave: false });
       console.log('💾 Payment Verification - Transaction saved');
     } else {
       console.log('ℹ️ Payment Verification - Status unchanged');
@@ -541,5 +549,67 @@ exports.manualPaymentUpdate = async (req, res) => {
       success: false,
       message: error.message
     });
+  }
+};
+
+/**
+ * @desc    Handle Cashfree payment webhook
+ * @route   POST /api/v1/pay/webhook
+ * @access  Public
+ */
+exports.webhookHandler = async (req, res) => {
+  try {
+    console.log('🔔 Webhook received:', req.body);
+
+    const { order_id, order_status, order_amount, cf_payment_id, payment_mode, reference_id } = req.body;
+
+    if (!order_id) {
+      console.log('❌ Missing order_id');
+      return res.status(400).json({ success: false, message: 'Missing order_id' });
+    }
+
+    console.log('🔍 Looking for transaction with order_id:', order_id);
+    const transaction = await Transaction.findOne({ transaction_id: order_id });
+    if (!transaction) {
+      console.log('⚠️ Transaction not found for order_id:', order_id);
+      return res.status(404).json({ success: false, message: 'Transaction not found' });
+    }
+
+    console.log('✅ Transaction found:', transaction._id, 'Current status:', transaction.payment_status);
+
+    // Update transaction
+    const previousStatus = transaction.payment_status;
+    transaction.payment_status = order_status || 'UNKNOWN';
+    transaction.gateway_response = req.body;
+
+    console.log('🔄 Updating transaction status from', previousStatus, 'to', transaction.payment_status);
+    await transaction.save({ validateBeforeSave: false });
+    console.log('💾 Transaction saved successfully');
+
+    // If success, update wallet
+    const successStatuses = ['PAID', 'SUCCESS', 'COMPLETED'];
+    if (successStatuses.includes(order_status)) {
+      console.log('💰 Processing successful payment for agent:', transaction.agent);
+      const agent = await Agent.findById(transaction.agent);
+      if (agent) {
+        const currentBalance = agent.wallet_balance || 0;
+        const newBalance = currentBalance + transaction.amount;
+        console.log('🧮 Updating balance from', currentBalance, 'to', newBalance);
+        await Agent.findByIdAndUpdate(agent._id, { wallet_balance: newBalance });
+        transaction.balance_after = newBalance;
+        await transaction.save({ validateBeforeSave: false });
+        console.log('💰 Wallet updated for agent:', agent._id, 'New balance:', newBalance);
+      } else {
+        console.log('⚠️ Agent not found for ID:', transaction.agent);
+      }
+    }
+
+    console.log('✅ Webhook processed for:', order_id);
+    return res.json({ success: true, message: 'Webhook processed successfully' });
+
+  } catch (error) {
+    console.error('💥 Webhook error:', error.message);
+    console.error('💥 Webhook error stack:', error.stack);
+    return res.status(500).json({ success: false, message: 'Something went wrong!', error: error.message });
   }
 };

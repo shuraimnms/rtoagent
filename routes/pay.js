@@ -3,6 +3,9 @@ const router = express.Router();
 const payController = require('../controllers/payController');
 const { protect } = require('../middleware/auth');
 
+// ✅ Webhook route must be before protect middleware
+router.post('/webhook', express.json(), payController.webhookHandler);
+
 // All pay routes require authentication
 router.use(protect);
 

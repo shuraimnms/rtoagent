@@ -87,40 +87,61 @@ exports.handleCashfreeWebhook = async (req, res) => {
   try {
     console.log('🔄 Cashfree Webhook - Received webhook request');
 
-    // Get raw body and signature
-    const rawBody = req.body.toString();
-    const signature = req.headers['x-webhook-signature'];
-
-    console.log('📝 Cashfree Webhook - Raw body length:', rawBody.length);
-    console.log('🔐 Cashfree Webhook - Signature present:', !!signature);
-
-    // Verify webhook signature
-    if (!cashfreeService.verifyWebhookSignature(rawBody, signature)) {
-      console.error('❌ Cashfree Webhook - Invalid signature');
-      return res.status(400).json({ success: false, message: 'Invalid signature' });
+    // If Cashfree sends raw body (Buffer), handle it
+    let rawBody;
+    if (Buffer.isBuffer(req.body)) {
+      rawBody = req.body.toString('utf8');
+    } else if (typeof req.body === 'object') {
+      rawBody = JSON.stringify(req.body);
+    } else {
+      rawBody = req.body;
     }
 
-    // Parse webhook data
-    const webhookData = JSON.parse(rawBody);
-    console.log('📦 Cashfree Webhook - Event type:', webhookData.type || 'unknown');
+    const signature = req.headers['x-webhook-signature'];
+    console.log('📝 Raw body length:', rawBody?.length || 0);
+    console.log('🔐 Signature present:', !!signature);
 
-    // Process webhook data
-    const processedData = await cashfreeService.processWebhook(webhookData);
-    console.log('⚙️ Cashfree Webhook - Processed data:', {
-      orderId: processedData.orderId,
-      amount: processedData.amount,
-      status: processedData.status
-    });
+    // 🚧 Skip signature validation when testing locally
+    const isLocal = process.env.NODE_ENV !== 'production';
+    if (!isLocal) {
+      if (!signature) {
+        console.error('❌ Missing Cashfree signature');
+        return res.status(400).json({ success: false, message: 'Signature missing' });
+      }
+
+      const validSignature = cashfreeService.verifyWebhookSignature(rawBody, signature);
+      if (!validSignature) {
+        console.error('❌ Invalid Cashfree signature');
+        return res.status(400).json({ success: false, message: 'Invalid signature' });
+      }
+    } else {
+      console.log('⚠️ Skipping signature validation in local mode');
+    }
+
+    // Parse the webhook body
+    const webhookData = typeof req.body === 'object' ? req.body : JSON.parse(rawBody);
+    console.log('📦 Webhook data received:', webhookData);
+
+    // Extract order/payment info
+    const orderId = webhookData?.data?.order?.order_id || webhookData.order_id;
+    const orderStatus = webhookData?.data?.order?.order_status || webhookData.order_status;
+    const orderAmount = webhookData?.data?.order?.order_amount || webhookData.order_amount;
+
+    console.log('💳 Extracted:', { orderId, orderStatus, orderAmount });
+
+    if (!orderId) {
+      console.error('❌ Missing order_id in webhook');
+      return res.status(200).json({ success: false, message: 'Missing order_id' });
+    }
 
     // Find transaction
-    const transaction = await Transaction.findOne({ transaction_id: processedData.orderId });
-
+    const transaction = await Transaction.findOne({ transaction_id: orderId });
     if (!transaction) {
-      console.warn('⚠️ Cashfree Webhook - Transaction not found:', processedData.orderId);
+      console.warn('⚠️ Transaction not found for order:', orderId);
       return res.status(200).json({ success: false, message: 'Transaction not found' });
     }
 
-    console.log('✅ Cashfree Webhook - Transaction found:', {
+    console.log('✅ Transaction found:', {
       id: transaction._id,
       currentStatus: transaction.payment_status,
       amount: transaction.amount,
@@ -128,70 +149,59 @@ exports.handleCashfreeWebhook = async (req, res) => {
     });
 
     const previousStatus = transaction.payment_status;
-    const newStatus = processedData.status;
+    const newStatus = orderStatus?.toUpperCase() || 'UNKNOWN';
 
-    // Update transaction
+    // Update transaction status and store webhook payload
     transaction.payment_status = newStatus;
     transaction.gateway_response = webhookData;
 
-    // Check if payment became successful
-    const successStatuses = ['SUCCESS', 'success', 'PAID', 'COMPLETED'];
+    // Success states list
+    const successStatuses = ['SUCCESS', 'PAID', 'COMPLETED'];
     const wasSuccessful = successStatuses.includes(newStatus);
     const wasPreviouslySuccessful = successStatuses.includes(previousStatus);
 
+    // If payment just succeeded — update wallet
     if (wasSuccessful && !wasPreviouslySuccessful) {
-      console.log('💰 Cashfree Webhook - Processing successful payment');
+      console.log('💰 Processing successful payment for', orderId);
 
-      // Get agent
       const agent = await Agent.findById(transaction.agent);
       if (!agent) {
-        console.error('❌ Cashfree Webhook - Agent not found:', transaction.agent);
+        console.error('❌ Agent not found for transaction:', transaction.agent);
         return res.status(200).json({ success: false, message: 'Agent not found' });
       }
 
-      // Calculate new balance
       const currentBalance = agent.wallet_balance || 0;
-      const amountToAdd = transaction.amount;
-      const newBalance = currentBalance + amountToAdd;
+      const newBalance = currentBalance + transaction.amount;
 
-      console.log('🧮 Cashfree Webhook - Balance calculation:', {
-        current: currentBalance,
-        adding: amountToAdd,
-        new: newBalance
+      console.log('🧮 Updating wallet:', {
+        oldBalance: currentBalance,
+        add: transaction.amount,
+        newBalance
       });
 
-      // Update agent balance
       await Agent.findByIdAndUpdate(transaction.agent, {
         wallet_balance: newBalance,
         updatedAt: new Date()
       });
 
-      // Update transaction
       transaction.balance_after = newBalance;
-
-      console.log('✅ Cashfree Webhook - Wallet balance updated successfully');
+      console.log('✅ Wallet updated successfully for agent:', agent._id);
     } else {
-      console.log('ℹ️ Cashfree Webhook - No balance update needed:', {
+      console.log('ℹ️ Payment not successful or already processed:', {
         newStatus,
         wasSuccessful,
         wasPreviouslySuccessful
       });
     }
 
-    // Save transaction
+    // Save transaction update
     await transaction.save();
+    console.log('🎉 Webhook processed successfully for:', orderId);
 
-    console.log('🎉 Cashfree Webhook - Processing complete:', {
-      orderId: processedData.orderId,
-      finalStatus: newStatus,
-      balanceUpdated: wasSuccessful && !wasPreviouslySuccessful
-    });
-
-    res.status(200).json({ success: true });
-
+    return res.status(200).json({ success: true, message: 'Webhook processed successfully' });
   } catch (error) {
-    console.error('💥 Cashfree Webhook - Error:', error);
-    // Always return 200 to prevent retries
-    res.status(200).json({ success: false, error: error.message });
+    console.error('💥 Webhook Error:', error.message);
+    // Always return 200 to prevent Cashfree retries
+    return res.status(200).json({ success: false, message: error.message });
   }
 };

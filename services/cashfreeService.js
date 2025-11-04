@@ -29,7 +29,12 @@ class CashfreeService {
 
       this.appId = settings.cashfree.appId;
       this.secretKey = settings.cashfree.secretKey;
-      this.callbackUrl = settings.cashfree.callbackUrl || `${process.env.FRONTEND_URL || 'http://localhost:5173'}/api/v1/webhook/cashfree`; // Corrected path to /webhook
+      this.callbackUrl = settings.cashfree.callbackUrl || `${process.env.BACKEND_URL || 'http://localhost:3000'}/api/v1/pay/webhook`; // Use backend URL for webhook
+
+      // Override with localhost for development
+      if (process.env.NODE_ENV !== 'production') {
+        this.callbackUrl = 'http://localhost:3000/api/v1/pay/webhook';
+      }
 
       console.log('CashfreeService Initialized with Callback URL:', this.callbackUrl);
 
