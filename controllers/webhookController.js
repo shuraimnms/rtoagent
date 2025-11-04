@@ -120,12 +120,28 @@ exports.handleCashfreeWebhook = async (req, res) => {
 
     // Parse the webhook body
     const webhookData = typeof req.body === 'object' ? req.body : JSON.parse(rawBody);
-    console.log('📦 Webhook data received:', webhookData);
+    console.log('📦 Webhook data received:', JSON.stringify(webhookData, null, 2));
 
-    // Extract order/payment info
-    const orderId = webhookData?.data?.order?.order_id || webhookData.order_id;
-    const orderStatus = webhookData?.data?.order?.order_status || webhookData.order_status;
-    const orderAmount = webhookData?.data?.order?.order_amount || webhookData.order_amount;
+    // Extract order/payment info - FIXED: Remove optional chaining that causes __.get error
+    let orderId, orderStatus, orderAmount;
+
+    // Handle different webhook data structures safely without optional chaining
+    if (webhookData.data && webhookData.data.order && webhookData.data.order.order_id) {
+      // New structure with data wrapper
+      orderId = webhookData.data.order.order_id;
+      orderStatus = webhookData.data.order.order_status;
+      orderAmount = webhookData.data.order.order_amount;
+    } else if (webhookData.data && webhookData.data.order_id) {
+      // Direct data structure
+      orderId = webhookData.data.order_id;
+      orderStatus = webhookData.data.order_status;
+      orderAmount = webhookData.data.order_amount;
+    } else {
+      // Legacy structure
+      orderId = webhookData.order_id;
+      orderStatus = webhookData.order_status;
+      orderAmount = webhookData.order_amount;
+    }
 
     console.log('💳 Extracted:', { orderId, orderStatus, orderAmount });
 
@@ -149,7 +165,7 @@ exports.handleCashfreeWebhook = async (req, res) => {
     });
 
     const previousStatus = transaction.payment_status;
-    const newStatus = orderStatus?.toUpperCase() || 'UNKNOWN';
+    const newStatus = (orderStatus || 'UNKNOWN').toUpperCase();
 
     // Update transaction status and store webhook payload
     transaction.payment_status = newStatus;
@@ -171,11 +187,12 @@ exports.handleCashfreeWebhook = async (req, res) => {
       }
 
       const currentBalance = agent.wallet_balance || 0;
-      const newBalance = currentBalance + transaction.amount;
+      const amountToAdd = orderAmount ? parseFloat(orderAmount) : transaction.amount;
+      const newBalance = currentBalance + amountToAdd;
 
       console.log('🧮 Updating wallet:', {
         oldBalance: currentBalance,
-        add: transaction.amount,
+        add: amountToAdd,
         newBalance
       });
 
@@ -201,7 +218,31 @@ exports.handleCashfreeWebhook = async (req, res) => {
     return res.status(200).json({ success: true, message: 'Webhook processed successfully' });
   } catch (error) {
     console.error('💥 Webhook Error:', error.message);
+    console.error('💥 Stack trace:', error.stack);
     // Always return 200 to prevent Cashfree retries
     return res.status(200).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Simple test webhook endpoint
+ */
+exports.testWebhook = async (req, res) => {
+  try {
+    console.log('🧪 Test webhook received:', req.body);
+    console.log('📋 Headers:', req.headers);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Webhook test successful',
+      data: req.body,
+      headers: req.headers
+    });
+  } catch (error) {
+    console.error('Test webhook error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 };

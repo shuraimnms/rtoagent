@@ -24,6 +24,7 @@ const auditRoutes = require('./routes/audit');
 
 const chatbotRoutes = require('./routes/chatbot'); // Ensure this is correctly imported
 const payRoutes = require('./routes/pay');
+const paymentRoutes = require('./routes/payments');
 const supportRoutes = require('./routes/support');
 
 // Import services
@@ -78,6 +79,7 @@ app.use('/api/v1/audit', auditRoutes);
 
 app.use('/api/v1/chatbot', chatbotRoutes); // Ensure this is correctly used
 app.use('/api/v1/pay', payRoutes);
+app.use('/api/v1/payments', paymentRoutes);
 app.use('/api/v1/support', supportRoutes);
 app.use('/api/v1/webhook', webhookRoutes);
 
