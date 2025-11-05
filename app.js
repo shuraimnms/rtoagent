@@ -23,7 +23,7 @@ const rtoRoutes = require('./routes/rto');
 const auditRoutes = require('./routes/audit');
 
 const chatbotRoutes = require('./routes/chatbot'); // Ensure this is correctly imported
-const payRoutes = require('./routes/pay');
+const payRoutes = require('./routes/pay'); // Re-enabled payRoutes
 const paymentRoutes = require('./routes/payments');
 const supportRoutes = require('./routes/support');
 
@@ -78,8 +78,8 @@ app.use('/api/v1/rto', rtoRoutes);
 app.use('/api/v1/audit', auditRoutes);
 
 app.use('/api/v1/chatbot', chatbotRoutes); // Ensure this is correctly used
-app.use('/api/v1/pay', payRoutes);
-app.use('/api/v1/payments', paymentRoutes);
+app.use('/api/v1/pay', payRoutes); // Use payRoutes for /api/v1/pay
+app.use('/api/v1/payments', paymentRoutes); // Use paymentRoutes for /api/v1/payments
 app.use('/api/v1/support', supportRoutes);
 app.use('/api/v1/webhook', webhookRoutes);
 

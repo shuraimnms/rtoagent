@@ -1,31 +1,27 @@
 const express = require('express');
 const router = express.Router();
-const payController = require('../controllers/payController');
-const webhookController = require('../controllers/webhookController');
+const paymentController = require('../controllers/paymentController'); // Use consolidated controller
 const { protect } = require('../middleware/auth');
-
-// ✅ Webhook route must be before protect middleware
-router.post('/webhook', express.json(), webhookController.handleCashfreeWebhook);
 
 // All pay routes require authentication
 router.use(protect);
 
 // Add balance to wallet
-router.post('/add-balance', payController.addBalance);
+router.post('/add-balance', paymentController.addBalance);
 
 // Get wallet balance
-router.get('/balance', payController.getBalance);
+router.get('/balance', paymentController.getBalance);
 
 // Get transaction history
-router.get('/history', payController.getTransactionHistory);
+router.get('/history', paymentController.getTransactionHistory);
 
 // Initiate wallet top-up
-router.post('/topup', payController.initiateTopup);
+router.post('/topup', paymentController.initiateTopup);
 
 // Verify payment status
-router.get('/verify-payment/:orderId', payController.verifyPayment);
+router.get('/verify-payment/:orderId', paymentController.verifyPayment);
 
 // Manual payment status update (fallback)
-router.post('/manual-update/:orderId', payController.manualPaymentUpdate);
+router.post('/manual-update/:orderId', paymentController.manualPaymentUpdate);
 
 module.exports = router;

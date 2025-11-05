@@ -119,11 +119,22 @@ class CashfreeService {
         }
       });
 
+      console.log('🔍 Cashfree Order Status Raw:', response.data);
+
+      // Check for failure indicators in the response
+      const orderStatus = response.data.order_status;
+      let paymentStatus = response.data.payment_status || 'UNKNOWN';
+
+      // If order is failed but payment status is unknown, mark as failed
+      if (orderStatus === 'FAILED' && paymentStatus === 'UNKNOWN') {
+        paymentStatus = 'FAILED';
+      }
+
       return {
         success: true,
         orderId: response.data.order_id,
-        orderStatus: response.data.order_status,
-        paymentStatus: response.data.payment_status || 'UNKNOWN',
+        orderStatus: orderStatus,
+        paymentStatus: paymentStatus,
         data: response.data
       };
     } catch (error) {
