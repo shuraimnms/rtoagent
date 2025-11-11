@@ -47,43 +47,73 @@ exports.updateSettings = async (req, res) => {
     const { settings, profile } = req.body;
 
     const updateData = {};
+    const setOperators = {}; // Use $set for specific nested paths
 
     // Fetch current agent data if needed for merging settings or checking email
     let currentAgent = null;
     if (settings || profile) {
       currentAgent = await Agent.findById(req.agent._id);
+      if (!currentAgent) {
+        return res.status(404).json({
+          success: false,
+          message: 'Agent not found'
+        });
+      }
     }
 
-    // Update settings if provided - merge with existing settings
+    // Update settings if provided - use $set for nested fields
     if (settings) {
-      updateData.settings = { ...currentAgent.settings };
-
-      // Merge notifications if provided
       if (settings.notifications) {
-        updateData.settings.notifications = { ...currentAgent.settings.notifications, ...settings.notifications };
+        for (const key in settings.notifications) {
+          setOperators[`settings.notifications.${key}`] = settings.notifications[key];
+        }
       }
-
-      // Merge security if provided
       if (settings.security) {
-        updateData.settings.security = { ...currentAgent.settings.security, ...settings.security };
+        for (const key in settings.security) {
+          setOperators[`settings.security.${key}`] = settings.security[key];
+        }
+      }
+      // Handle other top-level settings fields if they exist (e.g., per_message_cost, signature)
+      if (settings.per_message_cost !== undefined) {
+        setOperators['settings.per_message_cost'] = settings.per_message_cost;
+      }
+      if (settings.signature !== undefined) {
+        setOperators['settings.signature'] = settings.signature;
       }
     }
 
     // Update profile if provided
     if (profile) {
-      if (profile.name) updateData.name = profile.name;
-      if (profile.mobile) updateData.mobile = profile.mobile;
-      if (profile.company_name) updateData.company_name = profile.company_name;
+      if (profile.name) setOperators['name'] = profile.name;
+      if (profile.mobile) setOperators['mobile'] = profile.mobile;
+      if (profile.company_name) setOperators['company_name'] = profile.company_name;
 
       // Only update email if it's different to avoid unique constraint issues
       if (profile.email && profile.email !== currentAgent.email) {
-        updateData.email = profile.email;
+        setOperators['email'] = profile.email;
       }
+    }
+
+    // If there are no updates, return early
+    if (Object.keys(setOperators).length === 0) {
+      return res.json({
+        success: true,
+        message: 'No changes to update',
+        data: {
+          settings: currentAgent.settings,
+          profile: {
+            name: currentAgent.name,
+            email: currentAgent.email,
+            mobile: currentAgent.mobile,
+            company_name: currentAgent.company_name
+          }
+        }
+      });
     }
 
     const agent = await Agent.findByIdAndUpdate(
       req.agent._id,
-      updateData,
+      { $set: setOperators }, // Use $set operator for atomic updates of nested fields
       { new: true, runValidators: true }
     ).select('settings name email mobile company_name');
 

@@ -59,12 +59,18 @@ reminderSchema.pre('save', function(next) {
   if (this.isModified('expiry_date') || this.isModified('lead_times')) {
     this.scheduled_dates = this.lead_times.map(days => {
       const date = new Date(this.expiry_date);
+      date.setHours(0, 0, 0, 0); // Set time to midnight UTC for consistency
+
       date.setDate(date.getDate() - days);
       return date;
     });
 
     const now = new Date();
-    const upcomingDates = this.scheduled_dates.filter(date => date > now);
+    // Filter for dates in the future, and sort to get the earliest upcoming date
+    const upcomingDates = this.scheduled_dates
+      .filter(date => date > now)
+      .sort((a, b) => a.getTime() - b.getTime()); // Sort ascending to get the next_send_date
+
     this.next_send_date = upcomingDates.length > 0 ? upcomingDates[0] : null;
 
     if (!this.next_send_date) {
@@ -74,5 +80,4 @@ reminderSchema.pre('save', function(next) {
   next();
 });
 
-// Fix: Check if model already exists before creating
 module.exports = mongoose.models.Reminder || mongoose.model('Reminder', reminderSchema);

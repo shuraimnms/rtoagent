@@ -8,7 +8,7 @@ const transactionSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['topup', 'message_deduction', 'refund', 'adjustment'],
+    enum: ['topup', 'message_deduction', 'refund', 'adjustment', 'reminder_creation'], // Added 'reminder_creation'
     required: true
   },
   amount: {

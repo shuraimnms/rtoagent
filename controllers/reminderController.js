@@ -2,7 +2,9 @@ const Reminder = require('../models/Reminder');
 const Customer = require('../models/Customer');
 const MessageLog = require('../models/MessageLog');
 const Agent = require('../models/Agent');
+const Transaction = require('../models/Transaction');
 const msg91Service = require('../services/msg91Service');
+const mongoose = require('mongoose');
 
 const VALID_REMINDER_TYPES = [
   'vehicle_insurance_reminder',
@@ -13,9 +15,6 @@ const VALID_REMINDER_TYPES = [
   'noc_hypothecation_reminder'
 ];
 
-/**
- * Middleware to validate reminder data for create and update
- */
 const validateReminderData = (req, res, next) => {
   const { reminder_type, expiry_date } = req.body;
 
@@ -26,20 +25,30 @@ const validateReminderData = (req, res, next) => {
     });
   }
 
-  if (expiry_date && new Date(expiry_date) <= new Date()) {
-    return res.status(400).json({ success: false, message: 'Expiry date must be in the future' });
+  if (expiry_date) {
+    const inputDate = new Date(expiry_date);
+
+    if (isNaN(inputDate.getTime())) {
+      return res.status(400).json({ success: false, message: 'Expiry date is invalid' });
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const inputDateUTC = new Date(inputDate.toISOString().split('T')[0]);
+    const todayUTC = new Date(today.toISOString().split('T')[0]);
+
+    if (inputDateUTC < todayUTC) {
+      return res.status(400).json({ success: false, message: 'Expiry date cannot be in the past' });
+    }
   }
 
   next();
 };
 
-/**
- * @desc    Create a new reminder
- * @route   POST /api/v1/reminders
- * @access  Private
- */
 exports.createReminder = [validateReminderData, async (req, res) => {
   try {
+    console.log('Incoming request body for createReminder:', req.body); // Added for debugging
     const {
       customer,
       reminder_type,
@@ -51,53 +60,98 @@ exports.createReminder = [validateReminderData, async (req, res) => {
       language = 'en'
     } = req.body;
 
-    // Validate required fields
     if (!customer || !reminder_type || !expiry_date) {
+      console.error('Validation Error: Missing required fields (customer, reminder_type, expiry_date)'); // Added for debugging
       return res.status(400).json({
         success: false,
         message: 'Customer, reminder_type, and expiry_date are required fields'
       });
     }
 
-    // Check if customer exists and belongs to the agent
+    if (!mongoose.Types.ObjectId.isValid(customer)) {
+      console.error('Validation Error: Invalid customer ID format:', customer); // Added for debugging
+      return res.status(400).json({ success: false, message: 'Invalid customer ID format' });
+    }
+
     const customerExists = await Customer.findOne({
       _id: customer,
       created_by_agent: req.agent._id
     });
 
     if (!customerExists) {
+      console.error('Validation Error: Customer not found or access denied for customer ID:', customer); // Added for debugging
       return res.status(404).json({
         success: false,
         message: 'Customer not found or you do not have permission to access this customer'
       });
     }
 
-    // Validate lead times are positive numbers
     if (!Array.isArray(lead_times) || lead_times.some(time => time <= 0)) {
+      console.error('Validation Error: Invalid lead times:', lead_times); // Added for debugging
       return res.status(400).json({
         success: false,
         message: 'Lead times must be an array of positive numbers'
       });
     }
 
-    // Create the reminder
+    const agent = await Agent.findById(req.agent._id).select('wallet_balance settings');
+    if (!agent) {
+      return res.status(404).json({ success: false, message: 'Agent not found' });
+    }
+
+    const perMessageCost = agent.settings?.per_message_cost || 1.0;
+
+    if (agent.wallet_balance < perMessageCost) {
+      console.error('Validation Error: Insufficient wallet balance. Current:', agent.wallet_balance, 'Required:', perMessageCost); // Added for debugging
+      return res.status(400).json({
+        success: false,
+        message: 'Insufficient wallet balance to create reminder',
+        data: {
+          current_balance: agent.wallet_balance,
+          required_balance: perMessageCost,
+          needed: perMessageCost - agent.wallet_balance
+        }
+      });
+    }
+
+    agent.wallet_balance -= perMessageCost;
+    await agent.save();
+
+    try {
+      await Transaction.create({
+        agent: req.agent._id,
+        type: 'reminder_creation',
+        amount: -perMessageCost,
+        balance_after: agent.wallet_balance,
+        description: `Cost for creating reminder of type '${reminder_type}'`,
+        payment_status: 'success'
+      });
+    } catch (transactionError) {
+      console.error('Transaction creation error:', transactionError);
+      agent.wallet_balance += perMessageCost;
+      await agent.save();
+      return res.status(400).json({
+        success: false,
+        message: 'Failed to record transaction for reminder creation',
+        error: transactionError.message
+      });
+    }
+
     const reminderData = {
       customer,
       agent: req.agent._id,
       reminder_type,
       expiry_date: new Date(expiry_date),
-      lead_times: lead_times.sort((a, b) => b - a), // Sort descending
+      lead_times: lead_times.sort((a, b) => b - a),
       language
     };
 
-    // Add optional fields if provided
     if (vehicle_number) reminderData.vehicle_number = vehicle_number;
     if (license_number) reminderData.license_number = license_number;
     if (vehicle_type) reminderData.vehicle_type = vehicle_type;
 
     const reminder = await Reminder.create(reminderData);
 
-    // Populate customer details for response
     await reminder.populate('customer');
 
     res.status(201).json({
@@ -107,19 +161,23 @@ exports.createReminder = [validateReminderData, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Create reminder error:', error);
+    console.error('Create reminder error (catch block):', error); // Added for debugging
+    if (error.name === 'ValidationError') {
+      console.error('Mongoose Validation Errors:', error.errors); // Added for debugging
+      const errors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors
+      });
+    }
     res.status(400).json({
       success: false,
-      message: error.message
+      message: error.message || 'Failed to create reminder'
     });
   }
 }];
 
-/**
- * @desc    Get all reminders for the agent
- * @route   GET /api/v1/reminders
- * @access  Private
- */
 exports.getReminders = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -132,7 +190,6 @@ exports.getReminders = async (req, res) => {
       filterConditions.status = req.query.status;
     }
 
-    // Date range filters
     if (req.query.expiry_from || req.query.expiry_to) {
       filterConditions.expiry_date = {};
       if (req.query.expiry_from) filterConditions.expiry_date.$gte = new Date(req.query.expiry_from);
@@ -145,7 +202,6 @@ exports.getReminders = async (req, res) => {
       if (req.query.next_send_to) filterConditions.next_send_date.$lte = new Date(req.query.next_send_to);
     }
 
-    // Build the base aggregation pipeline with lookups
     const basePipeline = [
       {
         $lookup: {
@@ -177,7 +233,6 @@ exports.getReminders = async (req, res) => {
       }
     ];
 
-    // Add search conditions to filterConditions
     if (req.query.search) {
       const searchTerm = req.query.search.trim();
       if (searchTerm) {
@@ -190,10 +245,8 @@ exports.getReminders = async (req, res) => {
       }
     }
 
-    // Add the match stage after lookups
     basePipeline.push({ $match: filterConditions });
 
-    // Get total count for pagination
     const totalPipeline = [...basePipeline, { $count: "total" }];
     const totalResult = await Reminder.aggregate(totalPipeline).catch(err => {
       console.error("Aggregation total count error:", err);
@@ -201,7 +254,6 @@ exports.getReminders = async (req, res) => {
     });
     const total = totalResult.length > 0 ? totalResult[0].total : 0;
 
-    // Build data pipeline with sorting, skip, and limit
     const dataPipeline = [
       ...basePipeline,
       { $sort: { next_send_date: 1, createdAt: -1 } },
@@ -209,10 +261,8 @@ exports.getReminders = async (req, res) => {
       { $limit: limit }
     ];
 
-    // Execute aggregation pipeline for data
     const reminders = await Reminder.aggregate(dataPipeline);
 
-    // Get statistics (separate aggregation for status counts)
     const stats = await Reminder.aggregate([
       { $match: { agent: req.agent._id } },
       {
@@ -253,11 +303,6 @@ exports.getReminders = async (req, res) => {
   }
 };
 
-/**
- * @desc    Get a single reminder by ID
- * @route   GET /api/v1/reminders/:id
- * @access  Private
- */
 exports.getReminder = async (req, res) => {
   try {
     const reminder = await Reminder.findOne({
@@ -274,7 +319,6 @@ exports.getReminder = async (req, res) => {
       });
     }
 
-    // Get message logs for this reminder
     const messageLogs = await MessageLog.find({ reminder: reminder._id })
       .sort({ createdAt: -1 })
       .limit(50);
@@ -297,11 +341,6 @@ exports.getReminder = async (req, res) => {
   }
 };
 
-/**
- * @desc    Update a reminder
- * @route   PUT /api/v1/reminders/:id
- * @access  Private
- */
 exports.updateReminder = [validateReminderData, async (req, res) => {
   try {
     const {
@@ -315,7 +354,6 @@ exports.updateReminder = [validateReminderData, async (req, res) => {
       status
     } = req.body;
 
-    // Find reminder and verify ownership
     let reminder = await Reminder.findOne({
       _id: req.params.id,
       agent: req.agent._id
@@ -328,7 +366,6 @@ exports.updateReminder = [validateReminderData, async (req, res) => {
       });
     }
 
-    // Update fields
     const updateFields = {};
     if (reminder_type) updateFields.reminder_type = reminder_type;
     if (vehicle_number) updateFields.vehicle_number = vehicle_number;
@@ -360,11 +397,6 @@ exports.updateReminder = [validateReminderData, async (req, res) => {
   }
 }];
 
-/**
- * @desc    Delete a reminder
- * @route   DELETE /api/v1/reminders/:id
- * @access  Private
- */
 exports.deleteReminder = async (req, res) => {
   try {
     const reminder = await Reminder.findOneAndDelete({
@@ -379,7 +411,6 @@ exports.deleteReminder = async (req, res) => {
       });
     }
 
-    // Delete associated message logs
     await MessageLog.deleteMany({ reminder: req.params.id });
 
     res.json({
@@ -397,16 +428,10 @@ exports.deleteReminder = async (req, res) => {
   }
 };
 
-/**
- * @desc    Send test WhatsApp message
- * @route   POST /api/v1/reminders/test-message
- * @access  Private
- */
 exports.sendTestMessage = async (req, res) => {
   try {
     const { mobile, template_name, test_variables } = req.body;
 
-    // Validate required fields
     if (!mobile || !template_name) {
       return res.status(400).json({
         success: false,
@@ -414,7 +439,6 @@ exports.sendTestMessage = async (req, res) => {
       });
     }
 
-    // Validate mobile number format
     if (!/^\+\d{10,15}$/.test(mobile)) {
       return res.status(400).json({
         success: false,
@@ -422,22 +446,11 @@ exports.sendTestMessage = async (req, res) => {
       });
     }
 
-    console.log(`\n🔧 ===== SENDING TEST MESSAGE =====`);
-    console.log(`📱 To: ${mobile}`);
-    console.log(`📋 Template: ${template_name}`);
-    console.log(`🔤 Variables:`, test_variables);
-
-    // Check agent wallet balance (only deduct in production mode)
     const agent = await Agent.findById(req.agent._id);
     const messageCost = agent.settings.per_message_cost || 1.0;
 
-    // Check MSG91 configuration
     const msg91Status = await msg91Service.verifyConfiguration();
     const isSimulation = msg91Status.mode === 'simulation';
-
-    console.log(`🔧 Mode: ${isSimulation ? 'SIMULATION' : 'PRODUCTION'}`);
-    console.log(`💰 Wallet Balance: ${agent.wallet_balance}`);
-    console.log(`💸 Message Cost: ${messageCost}`);
 
     if (!isSimulation && agent.wallet_balance < messageCost) {
       return res.status(400).json({
@@ -457,14 +470,8 @@ exports.sendTestMessage = async (req, res) => {
       test_variables
     );
 
-    console.log(`✅ MSG91 Result: ${result.success ? 'SUCCESS' : 'FAILED'}`);
-    if (result.error) {
-      console.log(`❌ Error:`, result.error);
-    }
-
-    // Prepare message log data
     const messageLogData = {
-      reminder: null, // No reminder association for test messages
+      reminder: null,
       customer_mobile: mobile,
       template_name: template_name,
       variables_sent: test_variables || {},
@@ -474,25 +481,20 @@ exports.sendTestMessage = async (req, res) => {
       sent_at: new Date(),
       cost: isSimulation ? 0 : messageCost,
       message_type: 'test',
-      agent: req.agent._id // Add agent reference
+      agent: req.agent._id
     };
 
-    // Only deduct from wallet and create log if successful
     if (result.success) {
-      // Only deduct from wallet in production mode
       let newBalance = agent.wallet_balance;
       if (!isSimulation) {
         await Agent.findByIdAndUpdate(req.agent._id, {
           $inc: { wallet_balance: -messageCost }
         });
         newBalance = agent.wallet_balance - messageCost;
-        console.log(`💰 Deducted ${messageCost} from wallet. New balance: ${newBalance}`);
       }
 
       try {
-        // Create message log for test message
         const messageLog = await MessageLog.create(messageLogData);
-        console.log(`📝 Message log created: ${messageLog._id}`);
 
         const responseData = {
           provider_message_id: result.provider_message_id,
@@ -505,16 +507,12 @@ exports.sendTestMessage = async (req, res) => {
           }
         };
 
-        // Add cost information only in production mode
         if (!isSimulation) {
           responseData.cost_deducted = messageCost;
           responseData.new_balance = newBalance;
         } else {
           responseData.note = 'No cost deducted in simulation mode';
         }
-
-        console.log(`✅ Test message completed successfully`);
-        console.log(`🔧 ===== TEST MESSAGE COMPLETE =====\n`);
 
         res.json({
           success: true,
@@ -525,8 +523,7 @@ exports.sendTestMessage = async (req, res) => {
         });
 
       } catch (logError) {
-        console.error('❌ MessageLog creation error:', logError);
-        // Even if log fails, still return success for the message
+        console.error('MessageLog creation error:', logError);
         const responseData = {
           provider_message_id: result.provider_message_id,
           provider_response: result.provider_response,
@@ -540,9 +537,6 @@ exports.sendTestMessage = async (req, res) => {
           responseData.new_balance = agent.wallet_balance - messageCost;
         }
 
-        console.log(`⚠️ Message sent but log failed`);
-        console.log(`🔧 ===== TEST MESSAGE COMPLETE =====\n`);
-
         res.json({
           success: true,
           message: 'Test message sent but failed to log',
@@ -551,19 +545,13 @@ exports.sendTestMessage = async (req, res) => {
       }
 
     } else {
-      // Handle failed message
-      console.log(`❌ Message sending failed`);
+      messageLogData.status = 'FAILED';
+      messageLogData.error_message = result.error?.message || result.error;
       try {
-        // Log the failed attempt
-        messageLogData.status = 'FAILED';
-        messageLogData.error_message = result.error?.message || result.error;
-        const failedLog = await MessageLog.create(messageLogData);
-        console.log(`📝 Failed message log created: ${failedLog._id}`);
+        await MessageLog.create(messageLogData);
       } catch (logError) {
-        console.error('❌ Failed message log error:', logError);
+        console.error('Failed message log error:', logError);
       }
-
-      console.log(`🔧 ===== TEST MESSAGE FAILED =====\n`);
 
       res.status(400).json({
         success: false,
@@ -583,10 +571,8 @@ exports.sendTestMessage = async (req, res) => {
     }
 
   } catch (error) {
-    console.error('❌ Test message error:', error);
-    console.log(`🔧 ===== TEST MESSAGE ERROR =====\n`);
+    console.error('Test message error:', error);
     
-    // Handle specific validation errors
     if (error.name === 'ValidationError') {
       const errors = Object.values(error.errors).map(err => err.message);
       return res.status(400).json({
@@ -598,17 +584,11 @@ exports.sendTestMessage = async (req, res) => {
 
     res.status(400).json({
       success: false,
-      message: 'Error sending test message',
-      error: error.message
+      message: error.message
     });
   }
 };
 
-/**
- * @desc    Bulk create reminders
- * @route   POST /api/v1/reminders/bulk
- * @access  Private
- */
 exports.bulkCreateReminders = async (req, res) => {
   try {
     const { reminders } = req.body;
@@ -620,7 +600,6 @@ exports.bulkCreateReminders = async (req, res) => {
       });
     }
 
-    // Validate each reminder in the array
     const validReminderTypes = [
       'vehicle_insurance_reminder',
       'puc_certificate_reminder',
@@ -637,17 +616,14 @@ exports.bulkCreateReminders = async (req, res) => {
       const reminderData = reminders[i];
       const errors = [];
 
-      // Check required fields
       if (!reminderData.customer) errors.push('customer is required');
       if (!reminderData.reminder_type) errors.push('reminder_type is required');
       if (!reminderData.expiry_date) errors.push('expiry_date is required');
 
-      // Validate reminder type
       if (reminderData.reminder_type && !validReminderTypes.includes(reminderData.reminder_type)) {
         errors.push(`reminder_type must be one of: ${validReminderTypes.join(', ')}`);
       }
 
-      // Validate expiry date
       if (reminderData.expiry_date) {
         const expiryDate = new Date(reminderData.expiry_date);
         if (expiryDate <= new Date()) {
@@ -655,7 +631,6 @@ exports.bulkCreateReminders = async (req, res) => {
         }
       }
 
-      // Check if customer exists and belongs to agent
       if (reminderData.customer) {
         const customerExists = await Customer.findOne({
           _id: reminderData.customer,
@@ -683,7 +658,6 @@ exports.bulkCreateReminders = async (req, res) => {
       }
     }
 
-    // If all reminders have errors, return without creating any
     if (validationErrors.length === reminders.length) {
       return res.status(400).json({
         success: false,
@@ -692,10 +666,8 @@ exports.bulkCreateReminders = async (req, res) => {
       });
     }
 
-    // Create valid reminders
     const createdReminders = await Reminder.insertMany(validReminders);
 
-    // Populate customer details for response
     await Reminder.populate(createdReminders, { path: 'customer' });
 
     res.status(201).json({
@@ -718,20 +690,13 @@ exports.bulkCreateReminders = async (req, res) => {
   }
 };
 
-/**
- * @desc    Get reminder statistics and dashboard data
- * @route   GET /api/v1/reminders/stats/dashboard
- * @access  Private
- */
 exports.getDashboardStats = async (req, res) => {
   try {
     const agentId = req.agent._id;
 
-    // Get total counts
     const totalReminders = await Reminder.countDocuments({ agent: agentId });
     const totalCustomers = await Customer.countDocuments({ created_by_agent: agentId });
     
-    // Get reminders by status
     const statusStats = await Reminder.aggregate([
       { $match: { agent: agentId } },
       {
@@ -742,7 +707,6 @@ exports.getDashboardStats = async (req, res) => {
       }
     ]);
 
-    // Get reminders by type
     const typeStats = await Reminder.aggregate([
       { $match: { agent: agentId } },
       {
@@ -753,7 +717,6 @@ exports.getDashboardStats = async (req, res) => {
       }
     ]);
 
-    // Get upcoming reminders (next 7 days)
     const nextWeek = new Date();
     nextWeek.setDate(nextWeek.getDate() + 7);
     
@@ -769,7 +732,6 @@ exports.getDashboardStats = async (req, res) => {
     .sort({ next_send_date: 1 })
     .limit(10);
 
-    // Get recent message logs
     const recentMessages = await MessageLog.find({
       agent: agentId
     })
@@ -783,8 +745,17 @@ exports.getDashboardStats = async (req, res) => {
     .sort({ createdAt: -1 })
     .limit(10);
 
-    // Get wallet balance
     const agent = await Agent.findById(agentId).select('wallet_balance settings');
+
+    if (!agent) {
+      console.error('Dashboard stats error: Agent not found for ID', agentId);
+      return res.status(404).json({
+        success: false,
+        message: 'Agent not found'
+      });
+    }
+
+    const perMessageCost = agent.settings?.per_message_cost || 1.0;
 
     res.json({
       success: true,
@@ -793,7 +764,7 @@ exports.getDashboardStats = async (req, res) => {
           total_reminders: totalReminders,
           total_customers: totalCustomers,
           wallet_balance: agent.wallet_balance,
-          per_message_cost: agent.settings.per_message_cost || 1.0
+          per_message_cost: perMessageCost
         },
         statistics: {
           by_status: statusStats,
@@ -806,18 +777,14 @@ exports.getDashboardStats = async (req, res) => {
 
   } catch (error) {
     console.error('Dashboard stats error:', error);
+    console.error('Dashboard stats full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
     res.status(400).json({
       success: false,
-      message: error.message
+      message: error.message || 'Failed to fetch dashboard statistics'
     });
   }
 };
 
-/**
- * @desc    Manually trigger reminder sending (for testing)
- * @route   POST /api/v1/reminders/:id/send-now
- * @access  Private
- */
 exports.sendReminderNow = async (req, res) => {
   try {
     const reminder = await Reminder.findOne({
@@ -832,7 +799,6 @@ exports.sendReminderNow = async (req, res) => {
       });
     }
 
-    // Check if reminder is in a sendable state
     if (reminder.status === 'COMPLETED') {
       return res.status(400).json({
         success: false,
@@ -847,13 +813,10 @@ exports.sendReminderNow = async (req, res) => {
       });
     }
 
-    // Import scheduler service
     const schedulerService = require('../services/schedulerService');
 
-    // Process the reminder immediately
     await schedulerService.processReminder(reminder);
 
-    // Refresh reminder data
     const updatedReminder = await Reminder.findById(reminder._id)
       .populate('customer')
       .populate('agent');
@@ -873,11 +836,6 @@ exports.sendReminderNow = async (req, res) => {
   }
 };
 
-/**
- * @desc    Get reminders expiring soon
- * @route   GET /api/v1/reminders/expiring-soon
- * @access  Private
- */
 exports.getExpiringSoon = async (req, res) => {
   try {
     const days = parseInt(req.query.days) || 30;
@@ -914,18 +872,12 @@ exports.getExpiringSoon = async (req, res) => {
   }
 };
 
-/**
- * @desc    Get message logs for reminders
- * @route   GET /api/v1/reminders/:id/messages
- * @access  Private
- */
 exports.getReminderMessages = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    // Verify reminder belongs to agent
     const reminder = await Reminder.findOne({
       _id: req.params.id,
       agent: req.agent._id
@@ -965,11 +917,6 @@ exports.getReminderMessages = async (req, res) => {
   }
 };
 
-/**
- * @desc    Cancel a reminder (stop all future sends)
- * @route   POST /api/v1/reminders/:id/cancel
- * @access  Private
- */
 exports.cancelReminder = async (req, res) => {
   try {
     const reminder = await Reminder.findOneAndUpdate(
@@ -1006,11 +953,6 @@ exports.cancelReminder = async (req, res) => {
   }
 };
 
-/**
- * @desc    Reschedule a reminder
- * @route   POST /api/v1/reminders/:id/reschedule
- * @access  Private
- */
 exports.rescheduleReminder = async (req, res) => {
   try {
     const { expiry_date, lead_times } = req.body;
@@ -1049,7 +991,6 @@ exports.rescheduleReminder = async (req, res) => {
       updateFields.lead_times = lead_times.sort((a, b) => b - a);
     }
 
-    // Reset status to PENDING when rescheduling
     updateFields.status = 'PENDING';
 
     const updatedReminder = await Reminder.findByIdAndUpdate(
