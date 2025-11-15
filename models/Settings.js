@@ -48,7 +48,7 @@ const settingsSchema = new mongoose.Schema({
   wallet: {
     min_topup_amount: {
       type: Number,
-      default: 10,
+      default: 100,
       min: 1
     },
     max_topup_amount: {

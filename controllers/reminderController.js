@@ -696,7 +696,7 @@ exports.getDashboardStats = async (req, res) => {
 
     const totalReminders = await Reminder.countDocuments({ agent: agentId });
     const totalCustomers = await Customer.countDocuments({ created_by_agent: agentId });
-    
+
     const statusStats = await Reminder.aggregate([
       { $match: { agent: agentId } },
       {
@@ -717,12 +717,52 @@ exports.getDashboardStats = async (req, res) => {
       }
     ]);
 
+    // Customer growth over last 6 months
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+    const customerGrowth = await Customer.aggregate([
+      { $match: { created_by_agent: agentId, createdAt: { $gte: sixMonthsAgo } } },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$createdAt' },
+            month: { $month: '$createdAt' }
+          },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1 } }
+    ]);
+
+    // Format customer growth data for chart
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const customerGrowthData = [];
+    let cumulativeCount = 0;
+
+    for (let i = 0; i < 6; i++) {
+      const date = new Date();
+      date.setMonth(date.getMonth() - (5 - i));
+      const monthName = months[date.getMonth()];
+      const year = date.getFullYear();
+
+      const monthData = customerGrowth.find(item =>
+        item._id.year === year && item._id.month === (date.getMonth() + 1)
+      );
+
+      cumulativeCount += monthData ? monthData.count : 0;
+      customerGrowthData.push({
+        month: monthName,
+        customers: cumulativeCount
+      });
+    }
+
     const nextWeek = new Date();
     nextWeek.setDate(nextWeek.getDate() + 7);
-    
+
     const upcomingReminders = await Reminder.find({
       agent: agentId,
-      next_send_date: { 
+      next_send_date: {
         $gte: new Date(),
         $lte: nextWeek
       },
@@ -769,6 +809,13 @@ exports.getDashboardStats = async (req, res) => {
         statistics: {
           by_status: statusStats,
           by_type: typeStats
+        },
+        charts: {
+          reminders_by_type: typeStats.map(item => ({
+            name: item._id.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+            count: item.count
+          })),
+          customer_growth: customerGrowthData
         },
         upcoming_reminders: upcomingReminders,
         recent_messages: recentMessages

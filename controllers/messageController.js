@@ -86,19 +86,28 @@ exports.getMessageLogs = async (req, res) => {
 exports.getMessageStats = async (req, res) => {
   try {
     const agentId = req.agent._id;
-    const days = parseInt(req.query.days) || 30;
 
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
+    // Build date filter based on query params or default to last 30 days
+    let dateFilter = {};
+    if (req.query.date_from || req.query.date_to) {
+      dateFilter.sent_at = {};
+      if (req.query.date_from) dateFilter.sent_at.$gte = new Date(req.query.date_from);
+      if (req.query.date_to) dateFilter.sent_at.$lte = new Date(req.query.date_to);
+    } else {
+      // Default to last 30 days if no date filters provided
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 30);
+      dateFilter.sent_at = { $gte: startDate };
+    }
+
+    const baseMatch = {
+      agent: agentId,
+      ...dateFilter
+    };
 
     // Get message counts by status
     const statusStats = await MessageLog.aggregate([
-      {
-        $match: {
-          agent: agentId,
-          sent_at: { $gte: startDate }
-        }
-      },
+      { $match: baseMatch },
       {
         $group: {
           _id: '$status',
@@ -110,12 +119,7 @@ exports.getMessageStats = async (req, res) => {
 
     // Get messages by type
     const typeStats = await MessageLog.aggregate([
-      {
-        $match: {
-          agent: agentId,
-          sent_at: { $gte: startDate }
-        }
-      },
+      { $match: baseMatch },
       {
         $group: {
           _id: '$message_type',
@@ -126,12 +130,7 @@ exports.getMessageStats = async (req, res) => {
 
     // Get daily message counts
     const dailyStats = await MessageLog.aggregate([
-      {
-        $match: {
-          agent: agentId,
-          sent_at: { $gte: startDate }
-        }
-      },
+      { $match: baseMatch },
       {
         $group: {
           _id: {
@@ -152,13 +151,24 @@ exports.getMessageStats = async (req, res) => {
       { $sort: { '_id': 1 } }
     ]);
 
+    // Calculate individual status counts
+    const total = statusStats.reduce((sum, stat) => sum + stat.count, 0);
+    const delivered = statusStats.find(s => s._id === 'DELIVERED')?.count || 0;
+    const failed = statusStats.find(s => s._id === 'FAILED')?.count || 0;
+    const pending = statusStats.find(s => s._id === 'PENDING')?.count || 0;
+    const sent = statusStats.find(s => s._id === 'SENT')?.count || 0;
+
     res.json({
       success: true,
       data: {
+        total,
+        delivered,
+        failed,
+        pending,
+        sent,
         period: {
-          days: days,
-          start_date: startDate,
-          end_date: new Date()
+          date_from: req.query.date_from || null,
+          date_to: req.query.date_to || null
         },
         statistics: {
           by_status: statusStats,
@@ -166,11 +176,9 @@ exports.getMessageStats = async (req, res) => {
           daily: dailyStats
         },
         summary: {
-          total_messages: statusStats.reduce((sum, stat) => sum + stat.count, 0),
+          total_messages: total,
           total_cost: statusStats.reduce((sum, stat) => sum + stat.total_cost, 0),
-          success_rate: statusStats.length > 0 ?
-            (statusStats.find(s => s._id === 'SENT')?.count || 0) /
-            statusStats.reduce((sum, stat) => sum + stat.count, 0) * 100 : 0
+          success_rate: total > 0 ? (delivered / total) * 100 : 0
         }
       }
     });
