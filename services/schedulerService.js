@@ -4,6 +4,7 @@ const MessageLog = require('../models/MessageLog');
 const UnsubscribeList = require('../models/UnsubscribeList');
 const Agent = require('../models/Agent');
 const msg91Service = require('./msg91Service');
+const fetch = require('node-fetch'); // Import node-fetch for making HTTP requests
 
 class SchedulerService {
   constructor() {
@@ -41,6 +42,24 @@ class SchedulerService {
       this.retryFailedMessages();
     });
 
+    // Schedule a task to ping the server's health endpoint every 30 minutes to keep it awake on platforms like Render
+    cron.schedule('*/30 * * * *', async () => {
+      try {
+        if (!process.env.APP_BASE_URL) {
+          console.warn('APP_BASE_URL is not defined. Skipping periodic self-ping.');
+          return;
+        }
+        const response = await fetch(`${process.env.APP_BASE_URL}/health`);
+        if (response.ok) {
+          console.log('Periodic self-ping to health endpoint successful.');
+        } else {
+          console.error(`Periodic self-ping to health endpoint failed: ${response.status} ${response.statusText}`);
+        }
+      } catch (error) {
+        console.error('Error during periodic self-ping:', error);
+      }
+    });
+
     console.log('Scheduler started successfully');
   }
 
@@ -67,10 +86,10 @@ class SchedulerService {
 
   async processReminder(reminder) {
     try {
-      const isUnsubscribed = await UnsubscribeList.findOne({ 
-        mobile: reminder.customer.mobile 
+      const isUnsubscribed = await UnsubscribeList.findOne({
+        mobile: reminder.customer.mobile
       });
-      
+
       if (isUnsubscribed) {
         reminder.status = 'CANCELLED';
         await reminder.save();
@@ -83,7 +102,7 @@ class SchedulerService {
       }
 
       const variables = this.prepareMessageVariables(reminder);
-      
+
       const result = await msg91Service.sendTemplateMessage({
         mobile: reminder.customer.mobile,
         template_name: reminder.reminder_type,
@@ -118,7 +137,7 @@ class SchedulerService {
 
         const sentDates = reminder.scheduled_dates.filter(date => date <= new Date());
         const remainingDates = reminder.scheduled_dates.filter(date => date > new Date());
-        
+
         if (remainingDates.length > 0) {
           reminder.next_send_date = remainingDates[0];
           reminder.status = 'PENDING';
@@ -205,7 +224,7 @@ class SchedulerService {
       });
 
       messageLog.retry_count += 1;
-      
+
       if (result.success) {
         messageLog.status = 'DELIVERED';
         messageLog.sent_at = new Date();
